@@ -1,0 +1,6 @@
+{
+  "clientId": "clientA123",
+  "risk": 0.15,
+  "status": "Approved",
+  "message": "Initial KYC check passed"
+}
