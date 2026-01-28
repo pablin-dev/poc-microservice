@@ -39,11 +39,11 @@ type StandardKYCResponseBody struct {
 
 // StandardKYCResult contains the status, message, and optional UserData for standard operations
 type StandardKYCResult struct {
-	XMLName   xml.Name  `xml:"http://example.com/kyc KYCResponse"`
+	XMLName  xml.Name  `xml:"http://example.com/kyc KYCResponse"`
 	XmlnsKyc string    `xml:"xmlns,attr"`
-	Status    string    `xml:"Status"`
-	Message   string    `xml:"Message"`
-	UserData  *UserData `xml:"UserData,omitempty"`
+	Status   string    `xml:"Status"`
+	Message  string    `xml:"Message"`
+	UserData *UserData `xml:"UserData,omitempty"`
 }
 
 // --- Structures for Delete KYC SOAP Responses ---
@@ -63,8 +63,8 @@ type DeleteKYCResponseBody struct {
 
 // DeleteKYCResult contains the status and message for delete operations
 type DeleteKYCResult struct {
-	XMLName   xml.Name `xml:"http://example.com/kyc DeleteKYCResponse"`
+	XMLName  xml.Name `xml:"http://example.com/kyc DeleteKYCResponse"`
 	XmlnsKyc string   `xml:"xmlns,attr"`
-	Status    string   `xml:"Status"`
-	Message   string   `xml:"Message"`
+	Status   string   `xml:"Status"`
+	Message  string   `xml:"Message"`
 }

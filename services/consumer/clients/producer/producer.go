@@ -3,7 +3,6 @@ package producer
 import (
 	"log"
 
-
 	"github.com/confluentinc/confluent-kafka-go/v2/kafka"
 )
 
@@ -37,10 +36,10 @@ var defaultKafkaProducerCreator kafkaProducerCreator = func(conf *kafka.ConfigMa
 // It uses a kafkaProducerCreator to allow for dependency injection in tests.
 func NewProducer(bootstrapServers string) (*Producer, error) {
 	log.Println("Consumer Service: Setting up Kafka producer...")
-	
+
 	conf := &kafka.ConfigMap{"bootstrap.servers": bootstrapServers}
-	
-p, err := defaultKafkaProducerCreator(conf) // Use the creator function
+
+	p, err := defaultKafkaProducerCreator(conf) // Use the creator function
 	if err != nil {
 		log.Printf("Consumer Service: Failed to create Kafka producer: %v", err)
 		return nil, err

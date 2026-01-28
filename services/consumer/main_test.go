@@ -115,8 +115,8 @@ func TestWaitForSoapService(t *testing.T) {
 
 // MockConsumer implements consumerPkg.ConsumerInterface (if such an interface existed)
 type MockConsumer struct {
-	Messages chan *kafka.Message
-	Errors   chan error
+	Messages         chan *kafka.Message
+	Errors           chan error
 	SubscribedTopics []string
 }
 
@@ -135,11 +135,11 @@ func (m *MockConsumer) ReadMessage(timeout time.Duration) (*kafka.Message, error
 	}
 }
 func (m *MockConsumer) Close() {}
+
 // CommitMessage is not used in main.go directly, but would be part of a full consumer interface
 func (m *MockConsumer) CommitMessage(msg *kafka.Message) ([]kafka.TopicPartition, error) {
 	return nil, nil
 }
-
 
 // MockProducer implements producerPkg.ProducerInterface (if such an interface existed)
 type MockProducer struct {

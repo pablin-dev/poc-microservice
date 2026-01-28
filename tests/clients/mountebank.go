@@ -1,0 +1,230 @@
+package clients
+
+import (
+	"encoding/json"
+	"fmt"
+	"io"
+	"log"
+	"net/http"
+	"time"
+)
+
+const (
+	defaultHTTPTimeout = 30 * time.Second
+)
+
+// Imposter represents a single Mountebank imposter.
+type Imposter struct {
+	Protocol string `json:"protocol"`
+	Port     int    `json:"port"`
+	Name     string `json:"name,omitempty"`
+	// Add other fields as needed, based on Mountebank's response
+}
+
+// ImpostersResponse is the top-level structure for the GET /impostors response.
+type ImpostersResponse struct {
+	Imposters []Imposter `json:"imposters"`
+}
+
+// DetailedImposter represents a single Mountebank imposter with more details.
+type DetailedImposter struct {
+	Protocol  string        `json:"protocol"`
+	Port      int           `json:"port"`
+	Name      string        `json:"name,omitempty"`
+	Requests  []interface{} `json:"requests,omitempty"`  // Can be complex, use interface{} for now
+	Responses []interface{} `json:"responses,omitempty"` // Can be complex, use interface{} for now
+	Stubs     []interface{} `json:"stubs,omitempty"`     // Can be complex, use interface{} for now
+	// Add other fields as needed, based on Mountebank's response for a single imposter
+}
+
+// Client is a Mountebank API client.
+type MountebankClient struct {
+	BaseURL    string
+	HTTPClient *http.Client
+}
+
+// NewClient creates and returns a new MountebankClient.
+func NewMountebankClient(baseURL string) *MountebankClient {
+	log.Printf("Initializing MountebankClient with BaseURL: %s", baseURL)
+	return &MountebankClient{
+		BaseURL:    baseURL,
+		HTTPClient: &http.Client{Timeout: defaultHTTPTimeout},
+	}
+}
+
+// WaitForMountebank polls Mountebank until it's ready to serve requests or a timeout occurs.
+func (c *MountebankClient) WaitForMountebank(timeout time.Duration) error {
+	log.Printf("Waiting for Mountebank to be ready at %s for %s", c.BaseURL, timeout)
+	endTime := time.Now().Add(timeout)
+	for time.Now().Before(endTime) {
+		// Check if /imposters endpoint is responsive
+		_, errImposters := c.GetAllImpostors()
+		if errImposters == nil {
+			log.Println("Mountebank is ready (/imposters endpoint is responsive).")
+			return nil
+		}
+		log.Printf("Mountebank not yet ready. /imposters endpoint not responsive: %v. Retrying in 1 second...", errImposters)
+		time.Sleep(1 * time.Second)
+	}
+	return fmt.Errorf("timed out waiting for Mountebank to be ready")
+}
+
+// GetAllImpostors retrieves all active impostors from Mountebank.
+func (c *MountebankClient) GetAllImpostors() (*ImpostersResponse, error) {
+	url := fmt.Sprintf("%s/imposters", c.BaseURL)
+	log.Printf("DEBUG: Attempting GET request to URL: %s", url)
+	resp, err := c.HTTPClient.Get(url)
+	if err != nil {
+		log.Printf("ERROR: Failed to make GET request to %s: %v", url, err)
+		return nil, fmt.Errorf("failed to make GET request to %s: %w", url, err)
+	}
+	defer resp.Body.Close()
+
+	if resp.StatusCode != http.StatusOK {
+		body, readErr := io.ReadAll(resp.Body)
+		if readErr != nil {
+			log.Printf("ERROR: Failed GET %s: unexpected status code %d, failed to read response body: %v", url, resp.StatusCode, readErr)
+			return nil, fmt.Errorf("unexpected status code for GET %s: %d, failed to read response body: %w", url, resp.StatusCode, readErr)
+		}
+		log.Printf("ERROR: Failed GET %s: unexpected status code %d, body: %s", url, resp.StatusCode, string(body))
+		return nil, fmt.Errorf("unexpected status code for GET %s: %d, body: %s", url, resp.StatusCode, string(body))
+	}
+
+	body, err := io.ReadAll(resp.Body)
+	if err != nil {
+		return nil, fmt.Errorf("failed to read response body: %w", err)
+	}
+
+	var impostersResponse ImpostersResponse
+	if err := json.Unmarshal(body, &impostersResponse); err != nil {
+		return nil, fmt.Errorf("failed to unmarshal imposters response: %w", err)
+	}
+
+	return &impostersResponse, nil
+}
+
+// DeleteAllImpostors deletes all active impostors from Mountebank.
+func (c *MountebankClient) DeleteAllImpostors() error {
+	url := fmt.Sprintf("%s/imposters", c.BaseURL)
+	log.Printf("DEBUG: Attempting DELETE request to URL: %s", url)
+	req, err := http.NewRequest(http.MethodDelete, url, nil)
+	if err != nil {
+		log.Printf("ERROR: Failed to create DELETE request to %s: %v", url, err)
+		return fmt.Errorf("failed to create DELETE request to %s: %w", url, err)
+	}
+	req.Header.Add("Accept", "*/*")
+	req.Header.Add("User-Agent", "Go-http-client/1.1")
+
+	resp, err := c.HTTPClient.Do(req)
+	if err != nil {
+		log.Printf("ERROR: Failed to make DELETE request to %s: %v", url, err)
+		return fmt.Errorf("failed to make DELETE request to %s: %w", url, err)
+	}
+	defer resp.Body.Close()
+
+	if resp.StatusCode != http.StatusOK {
+		body, readErr := io.ReadAll(resp.Body)
+		if readErr != nil {
+			log.Printf("ERROR: Failed DELETE %s: unexpected status code %d, failed to read response body: %v", url, resp.StatusCode, readErr)
+			return fmt.Errorf("unexpected status code for DELETE %s: %d, failed to read response body: %w", url, resp.StatusCode, readErr)
+		}
+		log.Printf("ERROR: Failed DELETE %s: unexpected status code %d, body: %s", url, resp.StatusCode, string(body))
+		return fmt.Errorf("unexpected status code for DELETE %s: %d, body: %s", url, resp.StatusCode, string(body))
+	}
+
+	return nil
+}
+
+// GetImposter retrieves a single imposter by its port from Mountebank.
+func (c *MountebankClient) GetImposter(port int) (*DetailedImposter, error) {
+	url := fmt.Sprintf("%s/imposters/%d", c.BaseURL, port)
+	log.Printf("DEBUG: Attempting GET request to URL: %s", url)
+	resp, err := c.HTTPClient.Get(url)
+	if err != nil {
+		log.Printf("ERROR: Failed to make GET request to %s: %v", url, err)
+		return nil, fmt.Errorf("failed to make GET request to %s: %w", url, err)
+	}
+	defer resp.Body.Close()
+
+	if resp.StatusCode != http.StatusOK {
+		body, readErr := io.ReadAll(resp.Body)
+		if readErr != nil {
+			log.Printf("ERROR: Failed GET %s: unexpected status code %d, failed to read response body: %v", url, resp.StatusCode, readErr)
+			return nil, fmt.Errorf("unexpected status code for GET %s: %d, failed to read response body: %w", url, resp.StatusCode, readErr)
+		}
+		log.Printf("ERROR: Failed GET %s: unexpected status code %d, body: %s", url, resp.StatusCode, string(body))
+		return nil, fmt.Errorf("unexpected status code for GET %s: %d, body: %s", url, resp.StatusCode, string(body))
+	}
+
+	body, err := io.ReadAll(resp.Body)
+	if err != nil {
+		return nil, fmt.Errorf("failed to read response body: %w", err)
+	}
+
+	var imposter DetailedImposter
+	if err := json.Unmarshal(body, &imposter); err != nil {
+		return nil, fmt.Errorf("failed to unmarshal imposter response for port %d: %w", port, err)
+	}
+
+	return &imposter, nil
+}
+
+// DeleteRequests deletes all recorded requests for a specific imposter.
+func (c *MountebankClient) DeleteRequests(port int) error {
+	url := fmt.Sprintf("%s/imposters/%d/requests", c.BaseURL, port)
+	log.Printf("DEBUG: Attempting DELETE request to URL: %s", url)
+	req, err := http.NewRequest(http.MethodDelete, url, nil)
+	if err != nil {
+		log.Printf("ERROR: Failed to create DELETE request to %s: %v", url, err)
+		return fmt.Errorf("failed to create DELETE request to %s: %w", url, err)
+	}
+
+	resp, err := c.HTTPClient.Do(req)
+	if err != nil {
+		log.Printf("ERROR: Failed to make DELETE request to %s: %v", url, err)
+		return fmt.Errorf("failed to make DELETE request to %s: %w", url, err)
+	}
+	defer resp.Body.Close()
+
+	if resp.StatusCode != http.StatusOK {
+		body, readErr := io.ReadAll(resp.Body)
+		if readErr != nil {
+			log.Printf("ERROR: Failed DELETE %s: unexpected status code %d, failed to read response body: %v", url, resp.StatusCode, readErr)
+			return fmt.Errorf("unexpected status code for DELETE %s: %d, failed to read response body: %w", url, resp.StatusCode, readErr)
+		}
+		log.Printf("ERROR: Failed DELETE %s: unexpected status code %d, body: %s", url, resp.StatusCode, string(body))
+		return fmt.Errorf("unexpected status code for DELETE %s: %d, body: %s", url, resp.StatusCode, string(body))
+	}
+
+	return nil
+}
+
+// DeleteResponses deletes all recorded proxy responses for a specific imposter.
+func (c *MountebankClient) DeleteResponses(port int) error {
+	url := fmt.Sprintf("%s/imposters/%d/proxy/responses", c.BaseURL, port)
+	log.Printf("DEBUG: Attempting DELETE request to URL: %s", url)
+	req, err := http.NewRequest(http.MethodDelete, url, nil)
+	if err != nil {
+		log.Printf("ERROR: Failed to create DELETE request to %s: %v", url, err)
+		return fmt.Errorf("failed to create DELETE request to %s: %w", url, err)
+	}
+
+	resp, err := c.HTTPClient.Do(req)
+	if err != nil {
+		log.Printf("ERROR: Failed to make DELETE request to %s: %v", url, err)
+		return fmt.Errorf("failed to make DELETE request to %s: %w", url, err)
+	}
+	defer resp.Body.Close()
+
+	if resp.StatusCode != http.StatusOK {
+		body, readErr := io.ReadAll(resp.Body)
+		if readErr != nil {
+			log.Printf("ERROR: Failed DELETE %s: unexpected status code %d, failed to read response body: %v", url, resp.StatusCode, readErr)
+			return fmt.Errorf("unexpected status code for DELETE %s: %d, failed to read response body: %w", url, resp.StatusCode, readErr)
+		}
+		log.Printf("ERROR: Failed DELETE %s: unexpected status code %d, body: %s", url, resp.StatusCode, string(body))
+		return fmt.Errorf("unexpected status code for DELETE %s: %d, body: %s", url, resp.StatusCode, string(body))
+	}
+
+	return nil
+}

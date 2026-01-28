@@ -7,7 +7,6 @@ import (
 	"testing"
 	"time"
 
-
 	"github.com/confluentinc/confluent-kafka-go/v2/kafka"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/mock"
@@ -56,9 +55,9 @@ func TestNewProducer(t *testing.T) {
 
 	t.Run("Successfully creates producer", func(t *testing.T) {
 		mockKafka := new(MockKafkaProducer)
-		eventsChan := make(chan kafka.Event) // Create a channel for Events()
+		eventsChan := make(chan kafka.Event)      // Create a channel for Events()
 		mockKafka.On("Events").Return(eventsChan) // Mock the Events channel for the goroutine
-		mockKafka.On("Close").Return().Once() // Expect Close() to be called
+		mockKafka.On("Close").Return().Once()     // Expect Close() to be called
 
 		// Override the default creator for this test
 		oldKafkaProducerCreator := defaultKafkaProducerCreator
@@ -124,7 +123,7 @@ func TestProducer_Produce(t *testing.T) {
 
 	p, err := NewProducer("localhost:9092")
 	require.NoError(t, err)
-	
+
 	topic := KafkaStringPtr("test-topic")
 	value := []byte("test-message")
 	headers := []kafka.Header{{Key: "test", Value: []byte("header")}}

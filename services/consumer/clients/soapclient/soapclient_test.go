@@ -178,7 +178,7 @@ func TestReadKYC(t *testing.T) {
 		sc := NewSOAPClient(ts.URL)
 		userData, err := sc.ReadKYC("nonexistent") // Call should succeed, error is in response body
 
-		require.NoError(t, err) // No HTTP error, but SOAP response indicates error
+		require.NoError(t, err)                           // No HTTP error, but SOAP response indicates error
 		assert.Equal(t, "nonexistent", userData.ClientID) // ClientID should be populated from the request in error response
 		assert.Equal(t, 0.0, userData.Risk)
 		assert.Equal(t, "Error", userData.Status)

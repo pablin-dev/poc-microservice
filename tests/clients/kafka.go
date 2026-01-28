@@ -11,9 +11,9 @@ import (
 
 // KafkaClient holds Kafka producer, consumer, and admin client instances.
 type KafkaClient struct {
-	Producer *kafka.Producer
-	Consumer *kafka.Consumer
-	Admin    *kafka.AdminClient
+	Producer         *kafka.Producer
+	Consumer         *kafka.Consumer
+	Admin            *kafka.AdminClient
 	BootstrapServers string
 }
 
@@ -70,17 +70,17 @@ func (kc *KafkaClient) WaitForKafka(timeout time.Duration) error {
 	log.Printf("Waiting for Kafka to be ready at %s for %s", kc.BootstrapServers, timeout)
 	endTime := time.Now().Add(timeout)
 	for time.Now().Before(endTime) {
-		// Try to get cluster metadata to confirm active connection
+		// Try to describe the cluster to confirm active connection and cluster metadata availability
 		ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
-		_, err := kc.Admin.ClusterID(ctx)
+		_, err := kc.Admin.DescribeCluster(ctx)
 		cancel()
 
 		if err == nil {
 			log.Println("Kafka is ready.")
 			return nil
 		}
-		log.Printf("Kafka not yet ready: %v. Retrying...", err)
-		time.Sleep(1 * time.Second)
+		log.Printf("Kafka not yet ready (DescribeCluster failed): %v. Retrying...", err)
+		time.Sleep(5 * time.Second)
 	}
 	return fmt.Errorf("timed out waiting for Kafka to be ready")
 }
@@ -93,7 +93,7 @@ func (kc *KafkaClient) CreateKafkaTopic(topic string, numPartitions int) error {
 	topicSpec := kafka.TopicSpecification{
 		Topic:             topic,
 		NumPartitions:     numPartitions,
-		ReplicationFactor: 3, // Changed for 3-broker setup
+		ReplicationFactor: 1, // Changed for E2E test to simplify startup
 	}
 
 	results, _ := kc.Admin.CreateTopics(ctx, []kafka.TopicSpecification{topicSpec}) // Ignore the top-level error

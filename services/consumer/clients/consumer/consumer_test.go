@@ -76,7 +76,7 @@ func TestNewConsumer(t *testing.T) {
 
 		c, err := NewConsumer("localhost:9092", "test-group")
 
-				assert.NoError(t, err)
+		assert.NoError(t, err)
 		assert.NotNil(t, c)
 		assert.NotNil(t, c.reader)
 		c.Close() // Ensure Close is called on the mock

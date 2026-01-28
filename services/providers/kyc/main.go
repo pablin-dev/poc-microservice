@@ -1,7 +1,6 @@
 package main
 
 import (
-
 	"encoding/xml"
 	"fmt"
 	"io"
@@ -11,7 +10,7 @@ import (
 	"net/http"
 	"os"
 
-	"time"    // Added for time.Sleep for ActionTimeout
+	"time" // Added for time.Sleep for ActionTimeout
 )
 
 const (

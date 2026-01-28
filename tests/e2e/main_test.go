@@ -27,22 +27,25 @@ const (
 	kafkaReceiveTopic = "Receive"
 
 	kafkaResponseTopic = "Response"
-
-	kycServiceHost = "http://kyc-service:8081" // Host for kyc-service within Docker network
-
 )
 
 var _ = Describe("Kafka SOAP E2E Test Suite", Ordered, func() {
 	var kafkaClient *adminClient.KafkaClient // Use the new KafkaClient struct
 	var kycClient *adminClient.AdminAPIClient
-	var rng *rand.Rand // Declare rng here
+	var rng *rand.Rand         // Declare rng here
+	var kycAdminBaseURL string // Declare kycAdminBaseURL here
 
 	BeforeAll(func() {
 		defer GinkgoRecover()
 		log.SetOutput(GinkgoWriter) // Redirect standard logger to GinkgoWriter
 		bootstrapServers := os.Getenv("KAFKA_BOOTSTRAP_SERVERS")
 		if bootstrapServers == "" {
-			bootstrapServers = "localhost:9092" // Default for local execution outside Docker Compose
+			bootstrapServers = "127.0.0.1:9092" // Default for local execution outside Docker Compose
+		}
+
+		kycAdminBaseURL = os.Getenv("KYC_ADMIN_BASE_URL")
+		if kycAdminBaseURL == "" {
+			kycAdminBaseURL = "http://127.0.0.1:8081" // Default for local execution
 		}
 
 		// Initialize KafkaClient
@@ -61,7 +64,7 @@ var _ = Describe("Kafka SOAP E2E Test Suite", Ordered, func() {
 		rng = rand.New(rand.NewSource(time.Now().UnixNano())) // Initialize rng here
 
 		// Initialize Admin API Client
-		kycClient = adminClient.NewAdminAPIClient(kycServiceHost) // Updated call
+		kycClient = adminClient.NewAdminAPIClient(kycAdminBaseURL) // Updated call
 		Expect(kycClient).NotTo(BeNil(), "Admin API client should not be nil after initialization")
 
 		fmt.Println("DEBUG: Starting Kafka topic creation process.")
@@ -362,7 +365,7 @@ var _ = Describe("Kafka SOAP E2E Test Suite", Ordered, func() {
 				ExpectedClientID: "clientTimeout",
 				ExpectedStatus:   "Error",
 				ExpectedMessage:  "Failed to perform READ operation: SOAP service returned non-OK status: 408", // Expected 408 from kyc-service
-				ExpectedRisk:     0.0, // Default for error response
+				ExpectedRisk:     0.0,                                                                          // Default for error response
 			}),
 		)
 	})

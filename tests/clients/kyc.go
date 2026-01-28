@@ -15,7 +15,7 @@ import (
 
 // AdminAPIClient struct for interacting with the kyc-service admin API
 type AdminAPIClient struct {
-	client *http.Client
+	client  *http.Client
 	baseURL string
 }
 
@@ -24,7 +24,7 @@ func NewAdminAPIClient(kycServiceURL string) *AdminAPIClient {
 	adminURL := strings.TrimSuffix(kycServiceURL, "/soap") + "/admin/v1"
 	log.Printf("Initializing Admin API client with base URL: %s", adminURL)
 	return &AdminAPIClient{
-		client: &http.Client{Timeout: 5 * time.Second}, // Admin operations should be quick
+		client:  &http.Client{Timeout: 5 * time.Second}, // Admin operations should be quick
 		baseURL: adminURL,
 	}
 }
@@ -78,7 +78,6 @@ func (a *AdminAPIClient) ReadUser(clientID string) (models.UserData, error) {
 	}
 	return userData, nil
 }
-
 
 // UpdateUser via Admin API
 func (a *AdminAPIClient) UpdateUser(userData models.UserData) error {

@@ -39,7 +39,7 @@ var defaultKafkaConsumerCreator kafkaConsumerCreator = func(conf *kafka.ConfigMa
 // It uses a kafkaConsumerCreator to allow for dependency injection in tests.
 func NewConsumer(bootstrapServers, groupID string) (*Consumer, error) {
 	log.Println("Consumer Service: Setting up Kafka consumer...")
-	
+
 	conf := &kafka.ConfigMap{
 		"bootstrap.servers": bootstrapServers,
 		"group.id":          groupID,
