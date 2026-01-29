@@ -1,0 +1,67 @@
+function (request, state) {
+    state.map = state.map || {}; // Ensure map is initialized
+    const ns = { tem: 'http://tempuri.org/', soapenv: 'http://schemas.xmlsoap.org/soap/envelope/' };
+    const retrieveSuccessXml = `<soapenv:Envelope xmlns:soapenv="http://schemas.xmlsoap.org/soap/envelope/" xmlns:tem="http://tempuri.org/">
+   <soapenv:Header/>
+   <soapenv:Body>
+      <tem:RetrieveResponse>
+         <tem:Result>ValuePlaceholder</tem:Result>
+      </tem:RetrieveResponse>
+   </soapenv:Body>
+</soapenv:Envelope>`;
+    const errorXml = `<soapenv:Envelope xmlns:soapenv="http://schemas.xmlsoap.org/soap/envelope/" xmlns:tem="http://tempuri.org/">
+   <soapenv:Header/>
+   <soapenv:Body>
+      <tem:ErrorResponse>
+         <tem:Message>ErrorMessagePlaceholder</tem:Message>
+      </tem:ErrorResponse>
+   </soapenv:Body>
+</soapenv:Envelope>`;
+
+    try {
+        // Explicitly require xpath and xmldom for parsing
+        var xpath = require('xpath');
+        var dom = require('xmldom').DOMParser;
+
+        // Parse the request body string into an XML DOM object
+        var doc = new dom().parseFromString(request.body, 'text/xml');
+
+        const key = xpath.select("//*[local-name()='Key' and namespace-uri()='http://tempuri.org/']", doc)[0].firstChild.data;
+
+        if (!key) {
+            const errorMessage = "Missing Key in SOAP request body";
+            let errorResponse = errorXml.replace('ErrorMessagePlaceholder', errorMessage);
+            return {
+                statusCode: 400,
+                headers: { 'Content-Type': 'application/soap+xml; charset=utf-8' },
+                body: errorResponse
+            };
+        }
+
+        const value = state.map[key];
+
+        if (value === undefined) {
+            const errorMessage = "Key not found: " + key;
+            let errorResponse = errorXml.replace('ErrorMessagePlaceholder', errorMessage);
+            return {
+                statusCode: 404,
+                headers: { 'Content-Type': 'application/soap+xml; charset=utf-8' },
+                body: errorResponse
+            };
+        }
+
+        let successResponse = retrieveSuccessXml.replace('ValuePlaceholder', value);
+        return {
+            statusCode: 200,
+            headers: { 'Content-Type': 'application/soap+xml; charset=utf-8' },
+            body: successResponse
+        };
+    } catch (e) {
+        let errorResponse = errorXml.replace('ErrorMessagePlaceholder', 'Internal server error: ' + e.message);
+        return {
+            statusCode: 500,
+            headers: { 'Content-Type': 'application/soap+xml; charset=utf-8' },
+            body: errorResponse
+        };
+    }
+}

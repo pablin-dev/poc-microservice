@@ -57,13 +57,15 @@ services:
       - default
 
   mountebank:
-    image: bbyars/mountebank:2.9.2
+    build:
+      context: .
+      dockerfile: tests/e2e/Dockerfile.mountebank
     hostname: mountebank
     container_name: mountebank
     ports:
       - "2525:2525" # Mountebank's default HTTP port
+      - "4545:4545" # Kyc service default HTTP port
+      - "4546:4546" # Kyc service default HTTP port
+      - "4547:4547" # Kyc service default HTTP port for hello.ejs
     networks:
       - default
-    command: start
-    environment:
-      MB_FLAGS: --ip 0.0.0.0

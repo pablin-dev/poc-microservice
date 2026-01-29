@@ -1,6 +1,7 @@
 package clients
 
 import (
+	"bytes"
 	"encoding/json"
 	"fmt"
 	"io"
@@ -41,6 +42,7 @@ type DetailedImposter struct {
 type MountebankClient struct {
 	BaseURL    string
 	HTTPClient *http.Client
+	storedImposters map[int]*DetailedImposter
 }
 
 // NewClient creates and returns a new MountebankClient.
@@ -49,7 +51,23 @@ func NewMountebankClient(baseURL string) *MountebankClient {
 	return &MountebankClient{
 		BaseURL:    baseURL,
 		HTTPClient: &http.Client{Timeout: defaultHTTPTimeout},
+		storedImposters: make(map[int]*DetailedImposter),
 	}
+}
+
+// Init initializes the Mountebank client by waiting for Mountebank to be ready
+// and then storing all currently active impostors.
+func (c *MountebankClient) Init(timeout time.Duration) error {
+	if err := c.WaitForMountebank(timeout); err != nil {
+		return fmt.Errorf("failed to wait for Mountebank: %w", err)
+	}
+
+	imposters, err := c.StoreAllImpostors()
+	if err != nil {
+		return fmt.Errorf("failed to store all impostors: %w", err)
+	}
+	c.storedImposters = imposters
+	return nil
 }
 
 // WaitForMountebank polls Mountebank until it's ready to serve requests or a timeout occurs.
@@ -103,7 +121,7 @@ func (c *MountebankClient) GetAllImpostors() (*ImpostersResponse, error) {
 	return &impostersResponse, nil
 }
 
-// DeleteAllImpostors deletes all active impostors from Mountebank.
+// DeleteAllImpostors deletes all active imposters from Mountebank.
 func (c *MountebankClient) DeleteAllImpostors() error {
 	url := fmt.Sprintf("%s/imposters", c.BaseURL)
 	log.Printf("DEBUG: Attempting DELETE request to URL: %s", url)
@@ -167,6 +185,103 @@ func (c *MountebankClient) GetImposter(port int) (*DetailedImposter, error) {
 	}
 
 	return &imposter, nil
+}
+
+// DeleteImpostor deletes a specific imposter from Mountebank by its port.
+func (c *MountebankClient) DeleteImpostor(port int) error {
+	url := fmt.Sprintf("%s/imposters/%d", c.BaseURL, port)
+	log.Printf("DEBUG: Attempting DELETE request to URL: %s", url)
+	req, err := http.NewRequest(http.MethodDelete, url, nil)
+	if err != nil {
+		log.Printf("ERROR: Failed to create DELETE request to %s: %v", url, err)
+		return fmt.Errorf("failed to create DELETE request to %s: %w", url, err)
+	}
+	req.Header.Add("Accept", "*/*")
+	req.Header.Add("User-Agent", "Go-http-client/1.1")
+
+	resp, err := c.HTTPClient.Do(req)
+	if err != nil {
+		log.Printf("ERROR: Failed to make DELETE request to %s: %v", url, err)
+		return fmt.Errorf("failed to make DELETE request to %s: %w", url, err)
+	}
+	defer resp.Body.Close()
+
+	if resp.StatusCode != http.StatusOK {
+		body, readErr := io.ReadAll(resp.Body)
+		if readErr != nil {
+			log.Printf("ERROR: Failed DELETE %s: unexpected status code %d, failed to read response body: %v", url, resp.StatusCode, readErr)
+			return fmt.Errorf("unexpected status code for DELETE %s: %d, failed to read response body: %w", url, resp.StatusCode, readErr)
+		}
+		log.Printf("ERROR: Failed DELETE %s: unexpected status code %d, body: %s", url, resp.StatusCode, string(body))
+		return fmt.Errorf("unexpected status code for DELETE %s: %d, body: %s", url, resp.StatusCode, string(body))
+	}
+
+	return nil
+}
+
+// StoreAllImpostors retrieves all active impostors and stores their detailed configurations in a map.
+func (c *MountebankClient) StoreAllImpostors() (map[int]*DetailedImposter, error) {
+	storedImposters := make(map[int]*DetailedImposter)
+
+	impostersResponse, err := c.GetAllImpostors()
+	if err != nil {
+		return nil, fmt.Errorf("failed to get all impostors: %w", err)
+	}
+
+	for _, imposter := range impostersResponse.Imposters {
+		detailedImposter, err := c.GetImposter(imposter.Port)
+		if err != nil {
+			return nil, fmt.Errorf("failed to get detailed imposter for port %d: %w", imposter.Port, err)
+		}
+		storedImposters[imposter.Port] = detailedImposter
+	}
+
+	return storedImposters, nil
+}
+
+// CreateImposter creates a new imposter in Mountebank.
+func (c *MountebankClient) CreateImposter(imposter *DetailedImposter) error {
+	url := fmt.Sprintf("%s/imposters", c.BaseURL)
+	log.Printf("DEBUG: Attempting POST request to URL: %s for imposter on port %d", url, imposter.Port)
+
+	imposterJSON, err := json.Marshal(imposter)
+	if err != nil {
+		return fmt.Errorf("failed to marshal imposter to JSON: %w", err)
+	}
+
+	req, err := http.NewRequest(http.MethodPost, url, bytes.NewBuffer(imposterJSON))
+	if err != nil {
+		return fmt.Errorf("failed to create POST request to %s: %w", url, err)
+	}
+	req.Header.Set("Content-Type", "application/json")
+	req.Header.Add("Accept", "*/*")
+	req.Header.Add("User-Agent", "Go-http-client/1.1")
+
+	resp, err := c.HTTPClient.Do(req)
+	if err != nil {
+		return fmt.Errorf("failed to make POST request to %s: %w", url, err)
+	}
+	defer resp.Body.Close()
+
+	if resp.StatusCode != http.StatusCreated { // Mountebank returns 201 Created for successful impostor creation
+		body, readErr := io.ReadAll(resp.Body)
+		if readErr != nil {
+			return fmt.Errorf("unexpected status code for POST %s: %d, failed to read response body: %w", url, resp.StatusCode, readErr)
+		}
+		return fmt.Errorf("unexpected status code for POST %s: %d, body: %s", url, resp.StatusCode, string(body))
+	}
+
+	return nil
+}
+
+// RestoreImposter restores a previously stored imposter to Mountebank.
+func (c *MountebankClient) RestoreImposter(port int) error {
+	imposter, found := c.storedImposters[port]
+	if !found {
+		return fmt.Errorf("imposter with port %d not found in stored imposters map", port)
+	}
+	log.Printf("DEBUG: Restoring imposter %s on port %d", imposter.Name, imposter.Port)
+	return c.CreateImposter(imposter)
 }
 
 // DeleteRequests deletes all recorded requests for a specific imposter.

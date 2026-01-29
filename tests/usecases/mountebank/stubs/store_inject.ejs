@@ -1,0 +1,22 @@
+function (request, state) {
+    state.map = state.map || {}; // Initialize map if it doesn't exist
+    try {
+        var body = JSON.parse(request.body);
+        var key = body.key;
+        var value = body.value;
+
+        if (key === undefined || value === undefined) {
+            return { statusCode: 400, headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ error: 'Missing key or value in request body' }) };
+        }
+
+        state.map[key] = value;
+
+        return {
+            statusCode: 200,
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ message: 'Stored successfully', key: key, value: value })
+        };
+    } catch (e) {
+        return { statusCode: 500, headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ error: 'Internal server error: ' + e.message, requestBody: request.body }) };
+    }
+}

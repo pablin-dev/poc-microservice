@@ -1,0 +1,30 @@
+{
+    "port": 4547,
+    "protocol": "http",
+
+    "recordRequests": true,
+    "stubs": [
+        {
+            "predicates": [
+                { "equals": { "path": "/soap" } },
+                { "equals": { "method": "POST" } },
+                { "equals": { "headers": { "SOAPAction": "http://tempuri.org/HelloWorld" } } },
+                { "matches": { "body": "<tem:Name>.*</tem:Name>" } }
+            ],
+            "responses": [
+                {
+                    "is": {
+                        "statusCode": 200,
+                        "headers": {
+                            "Content-Type": "application/soap+xml; charset=utf-8"
+                        },
+                        "body": "<%- stringify(filename, './stubs/xml/res_hello.xml') %>"
+                    },
+                    "_behaviors": {
+                        "decorate": "(request, response, imposter) => { const nameMatch = request.body.match(/<tem:Name>(.*?)<\\/tem:Name>/); const name = nameMatch && nameMatch[1] ? nameMatch[1] : 'Guest'; response.body = response.body.replace('NamePlaceholder', name); }"
+                    }
+                }
+            ]
+        }
+    ]
+}

@@ -134,5 +134,69 @@ func (kc *KafkaClient) DeleteKafkaTopic(topic string) error {
 	return nil
 }
 
+// ProduceMessage produces a message to the specified Kafka topic.
+func (kc *KafkaClient) ProduceMessage(topic string, key, value []byte) error {
+	deliveryChan := make(chan kafka.Event)
+	defer close(deliveryChan)
+
+	err := kc.Producer.Produce(&kafka.Message{
+		TopicPartition: kafka.TopicPartition{Topic: &topic, Partition: kafka.PartitionAny},
+		Key:            key,
+		Value:          value,
+	}, deliveryChan)
+	if err != nil {
+		return fmt.Errorf("failed to produce message: %w", err)
+	}
+
+	e := <-deliveryChan
+	m := e.(*kafka.Message)
+
+	if m.TopicPartition.Error != nil {
+		return fmt.Errorf("delivery failed: %v", m.TopicPartition.Error)
+	}
+	log.Printf("Delivered message to topic %s [%d] at offset %v\n",
+		*m.TopicPartition.Topic, m.TopicPartition.Partition, m.TopicPartition.Offset)
+	return nil
+}
+
+// ConsumeMessage consumes a single message from the specified Kafka topic within a given timeout.
+func (kc *KafkaClient) ConsumeMessage(topic string, timeout time.Duration) (*kafka.Message, error) {
+	err := kc.Consumer.SubscribeTopics([]string{topic}, nil)
+	if err != nil {
+		return nil, fmt.Errorf("failed to subscribe to topic %s: %w", topic, err)
+	}
+
+	// Use a context with timeout for polling
+	ctx, cancel := context.WithTimeout(context.Background(), timeout)
+	defer cancel()
+
+	for {
+		select {
+		case <-ctx.Done():
+			return nil, fmt.Errorf("timed out after %s waiting for message from topic %s", timeout, topic)
+		default:
+			ev := kc.Consumer.Poll(100) // Poll with a small timeout in milliseconds
+			if ev == nil {
+				continue // No event received, continue polling
+			}
+
+			switch e := ev.(type) {
+			case *kafka.Message:
+				log.Printf("Consumed message from topic %s [%d] at offset %v\n",
+					*e.TopicPartition.Topic, e.TopicPartition.Partition, e.TopicPartition.Offset)
+				return e, nil
+			case kafka.Error:
+				return nil, fmt.Errorf("kafka consumer error: %v", e)
+			case kafka.PartitionEOF:
+				// End of partition, can happen in some scenarios, continue polling
+				continue
+			default:
+				// Ignore other events like stats
+				continue
+			}
+		}
+	}
+}
+
 // KafkaStringPtr is a helper to get a string pointer for Kafka topic
 func KafkaStringPtr(s string) *string { return &s }

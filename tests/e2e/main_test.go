@@ -11,8 +11,7 @@ import (
 	"testing"
 	"time"
 
-	adminClient "kafka-soap-e2e-test/tests/clients" // Updated import path
-
+	adminClient "kafka-soap-e2e-test/tests/clients" // Import the clients package with an alias
 	"github.com/confluentinc/confluent-kafka-go/v2/kafka"
 	. "github.com/onsi/ginkgo/v2"
 	. "github.com/onsi/gomega"

@@ -142,6 +142,74 @@ You can also run the steps individually using the provided `Makefile` targets:
     make clean
     ```
 
+## Testing Mountebank Impostors
+
+Once the Mountebank service is running (e.g., via `make up` if `mb-config.ejs` is loaded with all impostors), you can test the various impostor endpoints using `curl`.
+
+### Key-Value Store SOAP Impostor (Port 4546, `imposter2.ejs`)
+
+**1. Store a Key-Value Pair (SOAP):**
+
+```bash
+curl -X POST http://localhost:4546/ws -H 'Content-Type: application/soap+xml' -H 'SOAPAction: http://tempuri.org/Store' -d '<?xml version="1.0" encoding="utf-8"?><soapenv:Envelope xmlns:soapenv="http://schemas.xmlsoap.org/soap/envelope/" xmlns:tem="http://tempuri.org/"><soapenv:Header/><soapenv:Body><tem:StoreRequest><tem:Key>soapKey</tem:Key><tem:Value>soapValue</tem:Value></tem:StoreRequest></soapenv:Body></soapenv:Envelope>'
+```
+
+**2. Retrieve a Key's Value (SOAP):**
+
+```bash
+curl -X POST http://localhost:4546/ws -H 'Content-Type: application/soap+xml' -H 'SOAPAction: http://tempuri.org/Retrieve' -d '<?xml version="1.0" encoding="utf-8"?><soapenv:Envelope xmlns:soapenv="http://schemas.xmlsoap.org/soap/envelope/" xmlns:tem="http://tempuri.org/"><soapenv:Header/><soapenv:Body><tem:RetrieveRequest><tem:Key>soapKey</tem:Key></tem:RetrieveRequest></soapenv:Body></soapenv:Envelope>'
+```
+
+### Key-Value Store Impostor (Port 4545, `impostor.ejs`)
+
+**1. Store a Key-Value Pair (JSON):**
+
+```bash
+curl -X POST http://localhost:4545/store -H 'Content-Type: application/json' -d '{"key": "jsonKey", "value": "jsonValue"}'
+```
+
+**2. Retrieve a Key's Value (JSON):**
+
+```bash
+curl -X GET "http://localhost:4545/retrieve?key=jsonKey"
+```
+
+### Hello World SOAP Impostor (Port 4547, `hello.ejs`)
+
+**1. Say Hello (SOAP):**
+
+```bash
+curl -X POST http://localhost:4547/soap -H 'Content-Type: application/soap+xml' -H 'SOAPAction: http://tempuri.org/HelloWorld' -d '<?xml version="1.0" encoding="utf-8"?><soapenv:Envelope xmlns:soapenv="http://schemas.xmlsoap.org/soap/envelope/" xmlns:tem="http://tempuri.org/"><soapenv:Header/><soapenv:Body><tem:HelloWorld><tem:Name>MountebankUser</tem:Name></tem:HelloWorld></soapenv:Body></soapenv:Envelope>'
+```
+
+### Mountebank Management Endpoints
+
+These commands interact with the Mountebank server itself, typically on its main administration port (2525).
+
+**1. Get All Impostors:**
+
+```bash
+curl http://localhost:2525/imposters
+```
+
+**2. Delete All Impostors:**
+
+```bash
+curl -X DELETE http://localhost:2525/imposters
+```
+
+**3. Get Mountebank Configuration:**
+
+```bash
+curl http://localhost:2525/config
+```
+
+**4. Get Mountebank Logs:**
+
+```bash
+curl http://localhost:2525/logs
+```
+
 ## Docker Compose Details
 
 The `docker-compose.yaml` defines the following services:

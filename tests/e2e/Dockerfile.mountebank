@@ -1,0 +1,28 @@
+# Builder stage
+FROM node:24.11.1-alpine3.22 AS builder
+
+WORKDIR /app
+RUN chown -R node:node /app
+RUN npm install -g mountebank@2.9.1
+RUN npm install -g ejs xmldom xpath
+COPY --chown=node:node tests/usecases/mountebank /app/config
+EXPOSE 2525
+EXPOSE 4545 
+EXPOSE 4546
+
+USER node
+
+ENTRYPOINT ["mb"]
+CMD ["start", \
+    "--pidfile", \
+    "/app/mb.pid", \
+    "--logfile", \
+    "/app/mb.log", \
+    "--loglevel", \
+    "debug", \
+    "--debug", \
+    "--configfile", \
+    "/app/config/mb-config.ejs", \
+    "--allow-injection", \
+#    "--localOnly", \
+    "--port", "2525"]

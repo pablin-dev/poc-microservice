@@ -1,0 +1,53 @@
+{
+    "port": 4546,
+    "protocol": "http",
+    "name": "Key-Value Store SOAP Impostor",
+    "recordRequests": true,
+    "stubs": [
+        {
+            "predicates": [
+                { 
+                    "equals": {
+                        "path": "/ws", 
+                        "method": "POST",
+                        "headers": { 
+                            "Content-Type": "application/soap+xml",
+                            "SOAPAction": "http://tempuri.org/Store"
+                        }
+                    }
+                }
+            ],
+            "responses": [
+                {
+                    "inject": "<%- stringify(filename, 'stubs/store_inject_soap.ejs') %>"
+                }
+            ]
+        },
+        {
+            "predicates": [
+                { 
+                    "equals": {
+                        "path": "/ws", 
+                        "method": "POST",
+                        "headers": { 
+                            "Content-Type": "application/soap+xml",
+                            "SOAPAction": "http://tempuri.org/Retrieve"
+                        }
+                    }
+                }
+            ],
+            "responses": [
+                {
+                    "inject": "<%- stringify(filename, 'stubs/retrieve_inject_soap.ejs') %>"
+                }
+            ]
+        },
+        {
+            "responses": [
+                {
+                    "inject": "<%- stringify(filename, 'stubs/default_error_inject.ejs') %>"
+                }
+            ]
+        }
+    ]
+}

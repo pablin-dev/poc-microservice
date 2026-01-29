@@ -1,0 +1,73 @@
+{
+  "port": 4545,
+  "protocol": "http",
+  "name": "Key-Value Store Impostor",
+  "recordRequests": true,
+  "stubs": [
+    {
+      "predicates": [
+        {
+          "equals": {
+            "method": "POST",
+            "path": "/store"
+          }
+        }
+      ],
+      "responses": [
+        {
+          "inject": "<%- stringify(filename, 'stubs/store_inject.ejs') %>"
+        }
+      ]
+    },
+    {
+      "predicates": [
+        {
+          "equals": {
+            "method": "GET",
+            "path": "/retrieve"
+          }
+        },
+        {
+          "matches": {
+            "query": {
+              "key": ".+"
+            }
+          }
+        }
+      ],
+      "responses": [
+        {
+          "inject": "<%- stringify(filename, 'stubs/retrieve_inject.ejs') %>"
+        }
+      ]
+    },
+    {
+      "predicates": [
+        {
+          "equals": {
+            "method": "GET",
+            "path": "/retrieve"
+          }
+        },
+        {
+          "exists": {
+            "query": {
+              "key": false
+            }
+          }
+        }
+      ],
+      "responses": [
+        {
+          "is": {
+            "statusCode": 400,
+            "headers": {
+              "Content-Type": "application/json"
+            },
+            "body": "{\"error\":\"Missing key query parameter\"}"
+          }
+        }
+      ]
+    }
+  ]
+}

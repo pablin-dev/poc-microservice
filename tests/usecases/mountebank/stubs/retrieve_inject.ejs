@@ -1,0 +1,20 @@
+function (request, state) {
+    state.map = state.map || {}; // Ensure map is initialized
+    var key = request.query.key;
+
+    if (key === undefined) {
+        return { statusCode: 400, headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ error: 'Missing key query parameter' }) };
+    }
+
+    var value = state.map[key];
+
+    if (value === undefined) {
+        return { statusCode: 404, headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ error: 'Key not found: ' + key }) };
+    }
+
+    return {
+        statusCode: 200,
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ key: key, value: value })
+    };
+}

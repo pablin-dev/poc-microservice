@@ -1,0 +1,16 @@
+function (request, state) {
+    const errorXml = `<soapenv:Envelope xmlns:soapenv="http://schemas.xmlsoap.org/soap/envelope/" xmlns:tem="http://tempuri.org/">
+   <soapenv:Header/>
+   <soapenv:Body>
+      <tem:ErrorResponse>
+         <tem:Message>ErrorMessagePlaceholder</tem:Message>
+      </tem:ErrorResponse>
+   </soapenv:Body>
+</soapenv:Envelope>`;
+    let errorResponse = errorXml.replace('ErrorMessagePlaceholder', 'No matching SOAP service found for the request.');
+    return {
+        statusCode: 404,
+        headers: { 'Content-Type': 'application/soap+xml; charset=utf-8' },
+        body: errorResponse
+    };
+}

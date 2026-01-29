@@ -39,6 +39,7 @@ build-images:
 up: build-images
 	@echo "Starting Docker Compose services..."
 	docker compose -f ${DOCKER_COMPOSE_FILE} up -d
+	sleep 45
 
 down:
 	@echo "Stopping and removing Docker Compose services..."
@@ -46,7 +47,6 @@ down:
 
 test-e2e:
 	@echo "Running E2E tests locally..."
-	sleep 45
 	go run github.com/onsi/ginkgo/v2/ginkgo -v ./tests/e2e/... || ( \
 		echo "E2E tests failed. Printing consumer-service and kyc-service logs:" && \
 		docker compose -f ${DOCKER_COMPOSE_FILE} logs consumer-service kyc-service && \
@@ -54,7 +54,11 @@ test-e2e:
 		exit 1 \
 	)
 
+tidy:
+	go mod tidy
+
 clean:
+	go clean -modcache
 	@echo "Cleaning up Docker images and build artifacts..."
 	docker compose -f ${DOCKER_COMPOSE_FILE} down --rmi local
 	# Clean up any locally built Go binaries (if any were built outside Docker)

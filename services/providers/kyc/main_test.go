@@ -77,7 +77,7 @@ func TestSOAPHandler_KYCQuery(t *testing.T) {
 			expectedCode:     http.StatusOK,
 			expectedStatus:   "Success",
 			expectedMessage:  "User data retrieved",
-			expectedUserData: &models.UserData{ClientID: "client123", Risk: 0.7, Status: "Active", Message: "OK"},
+			expectedUserData: &models.UserData{XMLName: xml.Name{Space: "http://example.com/kyc", Local: "UserData"}, ClientID: "client123", Risk: 0.7, Status: "Active", Message: "OK"},
 		},
 		{
 			name:             "KYCQuery Client Not Found",

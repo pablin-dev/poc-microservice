@@ -1,0 +1,9 @@
+<soapenv:Envelope xmlns:soapenv="http://schemas.xmlsoap.org/soap/envelope/"
+   xmlns:tem="http://tempuri.org/">
+   <soapenv:Header />
+   <soapenv:Body>
+      <tem:HelloWorldResponse>
+         <tem:HelloWorldResult>Hello NamePlaceholder from Mountebank!</tem:HelloWorldResult>
+      </tem:HelloWorldResponse>
+   </soapenv:Body>
+</soapenv:Envelope>
