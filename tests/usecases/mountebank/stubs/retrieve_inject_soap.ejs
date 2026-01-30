@@ -26,7 +26,12 @@ function (request, state) {
         // Parse the request body string into an XML DOM object
         var doc = new dom().parseFromString(request.body, 'text/xml');
 
-        const key = xpath.select("//*[local-name()='Key' and namespace-uri()='http://tempuri.org/']", doc)[0].firstChild.data;
+        const keyNodes = xpath.select("//*[local-name()='Key' and namespace-uri()='http://tempuri.org/']", doc);
+
+        let key = '';
+        if (keyNodes.length > 0 && keyNodes[0].firstChild) {
+            key = keyNodes[0].firstChild.data;
+        }
 
         if (!key) {
             const errorMessage = "Missing Key in SOAP request body";

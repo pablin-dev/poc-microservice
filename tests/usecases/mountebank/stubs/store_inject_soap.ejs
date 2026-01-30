@@ -32,8 +32,18 @@ function (request, state) {
             console.log('Doc or Document Element is null/undefined.');
         }
 
-        const key = xpath.select("//*[local-name()='Key' and namespace-uri()='http://tempuri.org/']", doc)[0].firstChild.data;
-        const value = xpath.select("//*[local-name()='Value' and namespace-uri()='http://tempuri.org/']", doc)[0].firstChild.data;
+        const keyNodes = xpath.select("//*[local-name()='Key' and namespace-uri()='http://tempuri.org/']", doc);
+        const valueNodes = xpath.select("//*[local-name()='Value' and namespace-uri()='http://tempuri.org/']", doc);
+
+        let key = '';
+        if (keyNodes.length > 0 && keyNodes[0].firstChild) {
+            key = keyNodes[0].firstChild.data;
+        }
+
+        let value = '';
+        if (valueNodes.length > 0 && valueNodes[0].firstChild) {
+            value = valueNodes[0].firstChild.data;
+        }
 
         if (!key || !value) {
             const errorMessage = "Missing Key or Value in SOAP request body";
