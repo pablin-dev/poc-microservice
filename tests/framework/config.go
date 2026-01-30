@@ -2,10 +2,11 @@ package framework
 
 import (
 	"fmt"
-	"os"
 
 	"github.com/go-playground/validator/v10"
-	"gopkg.in/yaml.v2"
+	"github.com/knadh/koanf/parsers/yaml"
+	"github.com/knadh/koanf/providers/file"
+	"github.com/knadh/koanf/v2"
 )
 
 var validate *validator.Validate
@@ -16,38 +17,39 @@ func init() {
 
 // KafkaConfig defines the structure for Kafka-specific settings in the config.yaml
 type KafkaConfig struct {
-	BootstrapServers []string `yaml:"bootstrapServers"`
+	BootstrapServers []string `koanf:"bootstrapServers"`
 }
 
 // MountebankConfig defines the structure for Mountebank-specific settings in the config.yaml
 type MountebankConfig struct {
-	URL              string `yaml:"url"`
-	TimeoutInSeconds int    `yaml:"timeoutInSeconds"`
+	URL              string `koanf:"url"`
+	TimeoutInSeconds int    `koanf:"timeoutInSeconds"`
 }
 
 // Config defines the overall structure of the config.yaml
 type Config struct {
-	Kafka      KafkaConfig      `yaml:"kafka"`
-	Mountebank MountebankConfig `yaml:"mountebank"`
-	KycAdmin   KycAdminConfig   `yaml:"kycAdmin"` // New field
+	Kafka      KafkaConfig      `koanf:"kafka"`
+	Mountebank MountebankConfig `koanf:"mountebank"`
+	KycAdmin   KycAdminConfig   `koanf:"kycAdmin"` // New field
 }
 
 // KycAdminConfig defines the structure for KYC Admin API settings in the config.yaml
 type KycAdminConfig struct {
-	BaseURL string `yaml:"baseURL"`
+	BaseURL string `koanf:"baseURL"`
 }
 
 // LoadConfig reads the config.yaml file and unmarshals it into a Config struct.
 func LoadConfig(configPath string) (*Config, error) {
-	configData, err := os.ReadFile(configPath)
-	if err != nil {
-		return nil, fmt.Errorf("failed to read config file %s: %w", configPath, err)
+	var k = koanf.New(".")
+
+	// Load YAML config.
+	if err := k.Load(file.Provider(configPath), yaml.Parser()); err != nil {
+		return nil, fmt.Errorf("error loading config: %w", err)
 	}
 
 	var config Config
-	err = yaml.Unmarshal(configData, &config)
-	if err != nil {
-		return nil, fmt.Errorf("failed to unmarshal config data: %w", err)
+	if err := k.Unmarshal("", &config); err != nil {
+		return nil, fmt.Errorf("error unmarshaling config: %w", err)
 	}
 
 	// Validate the configuration
