@@ -2,15 +2,15 @@ package framework
 
 import (
 	"fmt"
-	"kafka-soap-e2e-test/tests/clients"
 	"time"
 )
 
 // Framework holds all clients and configurations needed for E2E tests.
 type Framework struct {
-	KafkaClient      *clients.KafkaClient
-	MountebankClient *clients.MountebankClient
-	KycClient        *clients.AdminAPIClient // New field
+	Config           *Config
+	KafkaClient      *KafkaClient
+	MountebankClient *MountebankClient
+	KycClient        *AdminAPIClient // New field
 }
 
 // NewFramework initializes and returns a new Framework instance.
@@ -21,21 +21,21 @@ func NewFramework(configPath string) (*Framework, error) {
 	}
 
 	// Initialize Kafka Client
-	kafkaClient, err := clients.NewKafkaClient(cfg.Kafka.BootstrapServers)
+	kafkaClient, err := NewKafkaClient(cfg.Kafka.BootstrapServers, cfg.Kafka.Consumer.Group, cfg.Kafka.Consumer.Offset)
 	if err != nil {
 		return nil, fmt.Errorf("failed to create Kafka client: %w", err)
 	}
 
 	// Initialize Mountebank Client
-	mountebankClient := clients.NewMountebankClient(cfg.Mountebank.URL)
+	mountebankClient := NewMountebankClient(cfg.Mountebank)
 	mountebankClient.HTTPClient.Timeout = time.Duration(cfg.Mountebank.TimeoutInSeconds) * time.Second
-
 	// Initialize Admin API Client
-	kycClient := clients.NewAdminAPIClient(cfg.KycAdmin.BaseURL)
+	kycClient := NewAdminAPIClient(cfg.KycAdmin.BaseURL)
 
 	return &Framework{
 		KafkaClient:      kafkaClient,
 		MountebankClient: mountebankClient,
 		KycClient:        kycClient,
+		Config:           cfg,
 	}, nil
 }

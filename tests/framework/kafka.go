@@ -1,4 +1,4 @@
-package clients
+package framework
 
 import (
 	"context"
@@ -19,7 +19,7 @@ type KafkaClient struct {
 }
 
 // NewKafkaClient initializes a new KafkaClient.
-func NewKafkaClient(bootstrapServers []string) (*KafkaClient, error) {
+func NewKafkaClient(bootstrapServers []string, consumerGroup, consumerOffset string) (*KafkaClient, error) {
 	var clientErr error
 	bootstrapServersStr := strings.Join(bootstrapServers, ",")
 	kc := &KafkaClient{
@@ -35,8 +35,8 @@ func NewKafkaClient(bootstrapServers []string) (*KafkaClient, error) {
 	// Initialize Consumer
 	kc.Consumer, clientErr = kafka.NewConsumer(&kafka.ConfigMap{
 		"bootstrap.servers": bootstrapServersStr,
-		"group.id":          "e2e-test-group",
-		"auto.offset.reset": "earliest",
+		"group.id":          consumerGroup,
+		"auto.offset.reset": consumerOffset,
 	})
 	if clientErr != nil {
 		kc.Producer.Close()

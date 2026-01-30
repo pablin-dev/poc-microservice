@@ -10,7 +10,6 @@ import (
 	"testing"
 	"time"
 
-	adminClient "kafka-soap-e2e-test/tests/clients" // Import the clients package with an alias
 	framework "kafka-soap-e2e-test/tests/framework" // Import the framework package
 
 	"github.com/confluentinc/confluent-kafka-go/v2/kafka"
@@ -22,12 +21,6 @@ func TestE2E(t *testing.T) {
 	RegisterFailHandler(Fail)
 	RunSpecs(t, "E2E Suite")
 }
-
-const (
-	kafkaReceiveTopic = "Receive"
-
-	kafkaResponseTopic = "Response"
-)
 
 var rng *rand.Rand // Declare rng here
 
@@ -54,49 +47,49 @@ var _ = Describe("Kafka SOAP E2E Test Suite", Ordered, func() {
 		Expect(testFramework.KycClient).NotTo(BeNil(), "Admin API client should not be nil after initialization")
 		fmt.Println("DEBUG: Starting Kafka topic creation process.")
 		// Ensure topics are clean before recreation
-		log.Printf("Attempting to delete Kafka topic: %s", kafkaReceiveTopic)
-		err = testFramework.KafkaClient.DeleteKafkaTopic(kafkaReceiveTopic)
+		log.Printf("Attempting to delete Kafka topic: %s", testFramework.Config.Kafka.Consumer.Topic)
+		err = testFramework.KafkaClient.DeleteKafkaTopic(testFramework.Config.Kafka.Consumer.Topic)
 		if err != nil {
-			log.Printf("Warning: Error deleting Kafka topic %s: %v. It might not have existed, proceeding.", kafkaReceiveTopic, err)
+			log.Printf("Warning: Error deleting Kafka topic %s: %v. It might not have existed, proceeding.", testFramework.Config.Kafka.Consumer.Topic, err)
 		} else {
-			log.Printf("Successfully deleted Kafka topic %s.", kafkaReceiveTopic)
+			log.Printf("Successfully deleted Kafka topic %s.", testFramework.Config.Kafka.Consumer.Topic)
 		}
 
-		log.Printf("Attempting to delete Kafka topic: %s", kafkaResponseTopic)
-		err = testFramework.KafkaClient.DeleteKafkaTopic(kafkaResponseTopic)
+		log.Printf("Attempting to delete Kafka topic: %s", testFramework.Config.Kafka.Producer.Topic)
+		err = testFramework.KafkaClient.DeleteKafkaTopic(testFramework.Config.Kafka.Producer.Topic)
 		if err != nil {
-			log.Printf("Warning: Error deleting Kafka topic %s: %v. It might not have existed, proceeding.", kafkaResponseTopic, err)
+			log.Printf("Warning: Error deleting Kafka topic %s: %v. It might not have existed, proceeding.", testFramework.Config.Kafka.Producer.Topic, err)
 		} else {
-			log.Printf("Successfully deleted Kafka topic %s.", kafkaResponseTopic)
+			log.Printf("Successfully deleted Kafka topic %s.", testFramework.Config.Kafka.Producer.Topic)
 		}
 
 		// Give Kafka a moment to fully propagate topic deletion before creation
 		time.Sleep(2 * time.Second)
 
 		// Create Kafka topics if they don't exist
-		log.Printf("Attempting to create Kafka topic: %s", kafkaReceiveTopic)
-		err = testFramework.KafkaClient.CreateKafkaTopic(kafkaReceiveTopic, 1) // Use new client method
+		log.Printf("Attempting to create Kafka topic: %s", testFramework.Config.Kafka.Consumer.Topic)
+		err = testFramework.KafkaClient.CreateKafkaTopic(testFramework.Config.Kafka.Consumer.Topic, 1) // Use new client method
 		if err != nil {
-			log.Printf("Error creating Kafka topic %s: %v", kafkaReceiveTopic, err)
+			log.Printf("Error creating Kafka topic %s: %v", testFramework.Config.Kafka.Consumer.Topic, err)
 		}
-		Expect(err).NotTo(HaveOccurred(), fmt.Sprintf("Failed to create Kafka topic %s", kafkaReceiveTopic))
-		log.Printf("Successfully handled Kafka topic %s creation/existence.", kafkaReceiveTopic)
+		Expect(err).NotTo(HaveOccurred(), fmt.Sprintf("Failed to create Kafka topic %s", testFramework.Config.Kafka.Consumer.Topic))
+		log.Printf("Successfully handled Kafka topic %s creation/existence.", testFramework.Config.Kafka.Consumer.Topic)
 
-		log.Printf("Attempting to create Kafka topic: %s", kafkaResponseTopic)
-		err = testFramework.KafkaClient.CreateKafkaTopic(kafkaResponseTopic, 1) // Use new client method
+		log.Printf("Attempting to create Kafka topic: %s", testFramework.Config.Kafka.Producer.Topic)
+		err = testFramework.KafkaClient.CreateKafkaTopic(testFramework.Config.Kafka.Producer.Topic, 1) // Use new client method
 		if err != nil {
-			log.Printf("Error creating Kafka topic %s: %v", kafkaResponseTopic, err)
+			log.Printf("Error creating Kafka topic %s: %v", testFramework.Config.Kafka.Producer.Topic, err)
 		}
-		Expect(err).NotTo(HaveOccurred(), fmt.Sprintf("Failed to create Kafka topic %s", kafkaResponseTopic))
-		log.Printf("Successfully handled Kafka topic %s creation/existence.", kafkaResponseTopic)
+		Expect(err).NotTo(HaveOccurred(), fmt.Sprintf("Failed to create Kafka topic %s", testFramework.Config.Kafka.Producer.Topic))
+		log.Printf("Successfully handled Kafka topic %s creation/existence.", testFramework.Config.Kafka.Producer.Topic)
 
 		// Give Kafka a moment to fully propagate topic creation
-		time.Sleep(1 * time.Second)
+		time.Sleep(5 * time.Second)
 
 		fmt.Println("DEBUG: About to initialize Kafka Producer")
 
 		// Subscribe the Kafka consumer to the response topic
-		err = testFramework.KafkaClient.Consumer.SubscribeTopics([]string{kafkaResponseTopic}, nil) // Use testFramework.KafkaClient.Consumer
+		err = testFramework.KafkaClient.Consumer.SubscribeTopics([]string{testFramework.Config.Kafka.Producer.Topic}, nil)
 		Expect(err).NotTo(HaveOccurred(), "Failed to subscribe to Kafka response topic")
 	})
 
@@ -177,10 +170,10 @@ var _ = Describe("Kafka SOAP E2E Test Suite", Ordered, func() {
 				dummyKafkaMessage, err = json.Marshal(kafkaMsgToSend)
 				Expect(err).NotTo(HaveOccurred(), "Failed to marshal dummy Kafka message")
 
-				By(fmt.Sprintf("Sending Kafka message type '%s' to '%s' topic (ClientID: %s, CorrelationID: %s)", tc.KafkaMessageType, kafkaReceiveTopic, tc.KafkaClientID, kafkaMsgToSend.CorrelationID))
+				By(fmt.Sprintf("Sending Kafka message type '%s' to '%s' topic (ClientID: %s, CorrelationID: %s)", tc.KafkaMessageType, testFramework.Config.Kafka.Consumer.Topic, tc.KafkaClientID, kafkaMsgToSend.CorrelationID))
 				// Produce message to 'Receive' topic
 				err = testFramework.KafkaClient.Producer.Produce(&kafka.Message{ // Use testFramework.KafkaClient.Producer
-					TopicPartition: kafka.TopicPartition{Topic: adminClient.KafkaStringPtr(kafkaReceiveTopic), Partition: kafka.PartitionAny}, // Use testKafkaClient.KafkaStringPtr
+					TopicPartition: kafka.TopicPartition{Topic: &testFramework.Config.Kafka.Consumer.Topic, Partition: kafka.PartitionAny},
 					Value:          dummyKafkaMessage,
 					Headers:        []kafka.Header{{Key: "correlationId", Value: []byte(kafkaMsgToSend.CorrelationID)}},
 				}, nil)
@@ -190,7 +183,7 @@ var _ = Describe("Kafka SOAP E2E Test Suite", Ordered, func() {
 				ev := testFramework.KafkaClient.Producer.Flush(10 * 1000) // Use testFramework.KafkaClient.Producer
 				Expect(ev).To(BeNumerically(">", 0), "Producer did not flush any messages")
 
-				By(fmt.Sprintf("Waiting for response on '%s' topic for triggered SOAP call (Expected CorrelationID: %s)", kafkaResponseTopic, kafkaMsgToSend.CorrelationID))
+				By(fmt.Sprintf("Waiting for response on '%s' topic for triggered SOAP call (Expected CorrelationID: %s)", testFramework.Config.Kafka.Producer.Topic, kafkaMsgToSend.CorrelationID))
 
 				// Consume message from 'Response' topic
 				var receivedEntity models.UserData

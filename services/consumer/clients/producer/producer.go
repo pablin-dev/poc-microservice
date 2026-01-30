@@ -7,7 +7,7 @@ import (
 )
 
 const (
-	KafkaResponseTopic = "Response"
+	KafkaResponseTopic = "Output" // TODO: sync with configuration
 )
 
 // KafkaProducerInterface defines the interface for the Kafka producer functionalities used.

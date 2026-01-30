@@ -1,4 +1,4 @@
-package clients
+package framework
 
 import (
 	"bytes"
@@ -16,19 +16,28 @@ const (
 
 // Client is a Mountebank API client.
 type MountebankClient struct {
-	BaseURL         string
+	MountebankURL   string
+	AdminPort       int
+	ImpostersPort   []map[string]int
 	HTTPClient      *http.Client
 	StoredImposters map[int]*DetailedImposter // Exported field
 }
 
 // NewClient creates and returns a new MountebankClient.
-func NewMountebankClient(baseURL string) *MountebankClient {
-	log.Printf("Initializing MountebankClient with BaseURL: %s", baseURL)
+func NewMountebankClient(cfg MountebankConfig) *MountebankClient {
+	log.Printf("Initializing MountebankClient with URL: %s, Admin Port: %d, Imposters Ports: %v", cfg.URL, cfg.Ports.Admin, cfg.Ports.Imposters)
 	return &MountebankClient{
-		BaseURL:         baseURL,
+		MountebankURL:   cfg.URL,
+		AdminPort:       cfg.Ports.Admin,
+		ImpostersPort:   cfg.Ports.Imposters,
 		HTTPClient:      &http.Client{Timeout: defaultHTTPTimeout},
 		StoredImposters: make(map[int]*DetailedImposter), // Initialize the exported field
 	}
+}
+
+// GetAdminBaseURL returns the base URL for the Mountebank admin API.
+func (c *MountebankClient) GetAdminBaseURL() string {
+	return fmt.Sprintf("%s:%d", c.MountebankURL, c.AdminPort)
 }
 
 // Init initializes the Mountebank client by waiting for Mountebank to be ready
@@ -48,7 +57,8 @@ func (c *MountebankClient) Init(timeout time.Duration) error {
 
 // WaitForMountebank polls Mountebank until it's ready to serve requests or a timeout occurs.
 func (c *MountebankClient) WaitForMountebank(timeout time.Duration) error {
-	log.Printf("Waiting for Mountebank to be ready at %s for %s", c.BaseURL, timeout)
+	adminBaseURL := c.GetAdminBaseURL()
+	log.Printf("Waiting for Mountebank to be ready at %s for %s", adminBaseURL, timeout)
 	endTime := time.Now().Add(timeout)
 	for time.Now().Before(endTime) {
 		// Check if /imposters endpoint is responsive
@@ -65,7 +75,8 @@ func (c *MountebankClient) WaitForMountebank(timeout time.Duration) error {
 
 // GetAllImpostors retrieves all active impostors from Mountebank.
 func (c *MountebankClient) GetAllImpostors() (*ImpostersResponse, error) {
-	url := fmt.Sprintf("%s/imposters", c.BaseURL)
+	adminBaseURL := c.GetAdminBaseURL()
+	url := fmt.Sprintf("%s/imposters", adminBaseURL)
 	log.Printf("DEBUG: Attempting GET request to URL: %s", url)
 	resp, err := c.HTTPClient.Get(url)
 	if err != nil {
@@ -131,7 +142,8 @@ func (c *MountebankClient) GetAllImpostors() (*ImpostersResponse, error) {
 
 // GetImposter retrieves a single imposter by its port from Mountebank.
 func (c *MountebankClient) GetImposter(port int) (*DetailedImposter, error) {
-	url := fmt.Sprintf("%s/imposters/%d", c.BaseURL, port)
+	adminBaseURL := c.GetAdminBaseURL()
+	url := fmt.Sprintf("%s/imposters/%d", adminBaseURL, port)
 	log.Printf("DEBUG: Attempting GET request to URL: %s", url)
 	resp, err := c.HTTPClient.Get(url)
 	if err != nil {
@@ -165,7 +177,8 @@ func (c *MountebankClient) GetImposter(port int) (*DetailedImposter, error) {
 
 // DeleteImpostor deletes a specific imposter from Mountebank by its port.
 func (c *MountebankClient) DeleteImpostor(port int) error {
-	url := fmt.Sprintf("%s/imposters/%d", c.BaseURL, port)
+	adminBaseURL := c.GetAdminBaseURL()
+	url := fmt.Sprintf("%s/imposters/%d", adminBaseURL, port)
 	log.Printf("DEBUG: Attempting DELETE request to URL: %s", url)
 	req, err := http.NewRequest(http.MethodDelete, url, nil)
 	if err != nil {
@@ -217,7 +230,8 @@ func (c *MountebankClient) StoreAllImpostors() (map[int]*DetailedImposter, error
 
 // CreateImposter creates a new imposter in Mountebank.
 func (c *MountebankClient) CreateImposter(imposter *DetailedImposter) error {
-	url := fmt.Sprintf("%s/imposters", c.BaseURL)
+	adminBaseURL := c.GetAdminBaseURL()
+	url := fmt.Sprintf("%s/imposters", adminBaseURL)
 	log.Printf("DEBUG: Attempting POST request to URL: %s for imposter on port %d", url, imposter.Port)
 
 	imposterJSON, err := json.Marshal(imposter)
@@ -262,7 +276,8 @@ func (c *MountebankClient) RestoreImposter(port int) error {
 
 // DeleteRequests deletes all recorded requests for a specific imposter.
 func (c *MountebankClient) DeleteRequests(port int) error {
-	url := fmt.Sprintf("%s/imposters/%d/requests", c.BaseURL, port)
+	adminBaseURL := c.GetAdminBaseURL()
+	url := fmt.Sprintf("%s/imposters/%d/requests", adminBaseURL, port)
 	log.Printf("DEBUG: Attempting DELETE request to URL: %s", url)
 	req, err := http.NewRequest(http.MethodDelete, url, nil)
 	if err != nil {
@@ -292,7 +307,8 @@ func (c *MountebankClient) DeleteRequests(port int) error {
 
 // DeleteResponses deletes all recorded proxy responses for a specific imposter.
 func (c *MountebankClient) DeleteResponses(port int) error {
-	url := fmt.Sprintf("%s/imposters/%d/proxy/responses", c.BaseURL, port)
+	adminBaseURL := c.GetAdminBaseURL()
+	url := fmt.Sprintf("%s/imposters/%d/proxy/responses", adminBaseURL, port)
 	log.Printf("DEBUG: Attempting DELETE request to URL: %s", url)
 	req, err := http.NewRequest(http.MethodDelete, url, nil)
 	if err != nil {

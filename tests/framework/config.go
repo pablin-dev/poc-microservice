@@ -9,24 +9,39 @@ import (
 	"github.com/knadh/koanf/v2"
 )
 
-var validate *validator.Validate
-
-func init() {
-	validate = validator.New(validator.WithRequiredStructEnabled())
-}
-
-// KafkaConfig defines the structure for Kafka-specific settings in the config.yaml
-type KafkaConfig struct {
-	BootstrapServers []string `koanf:"bootstrapServers"`
+// MountebankPorts defines the structure for Mountebank ports
+type MountebankPorts struct {
+	Admin     int              `koanf:"admin"`
+	Imposters []map[string]int `koanf:"imposters"`
 }
 
 // MountebankConfig defines the structure for Mountebank-specific settings in the config.yaml
 type MountebankConfig struct {
-	URL              string `koanf:"url"`
-	TimeoutInSeconds int    `koanf:"timeoutInSeconds"`
+	URL              string          `koanf:"url"`
+	Ports            MountebankPorts `koanf:"ports"`
+	TimeoutInSeconds int             `koanf:"timeoutInSeconds"`
+}
+
+// KafkaConfig defines the structure for Kafka-specific settings in the config.yaml
+
+type KafkaConsumerConfig struct {
+	Group  string `koanf:"group"`
+	Topic  string `koanf:"topic"`
+	Offset string `koanf:"offset"`
+}
+
+type KafkaProducerConfig struct {
+	Topic string `koanf:"topic"`
+}
+
+type KafkaConfig struct {
+	BootstrapServers []string            `koanf:"bootstrapServers"`
+	Consumer         KafkaConsumerConfig `koanf:"consumer"`
+	Producer         KafkaProducerConfig `koanf:"producer"`
 }
 
 // Config defines the overall structure of the config.yaml
+
 type Config struct {
 	Kafka      KafkaConfig      `koanf:"kafka"`
 	Mountebank MountebankConfig `koanf:"mountebank"`
@@ -40,7 +55,8 @@ type KycAdminConfig struct {
 
 // LoadConfig reads the config.yaml file and unmarshals it into a Config struct.
 func LoadConfig(configPath string) (*Config, error) {
-	var k = koanf.New(".")
+	k := koanf.New(".")
+	validate := validator.New(validator.WithRequiredStructEnabled())
 
 	// Load YAML config.
 	if err := k.Load(file.Provider(configPath), yaml.Parser()); err != nil {

@@ -1,4 +1,4 @@
-package clients
+package framework
 
 // Imposter represents a single Mountebank imposter.
 type Imposter struct {

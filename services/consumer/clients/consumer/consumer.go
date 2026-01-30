@@ -8,7 +8,7 @@ import (
 )
 
 const (
-	KafkaReceiveTopic = "Receive"
+	KafkaReceiveTopic = "Income" // TODO: sync with configuration
 )
 
 // KafkaConsumerInterface defines the interface for the Kafka consumer functionalities used.
