@@ -31,7 +31,7 @@ var _ = Context("Hello World SOAP Imposter functionality", func() {
 		soapAction := "http://tempuri.org/HelloWorld"
 		targetURL := fmt.Sprintf("http://127.0.0.1:%d/soap", imposterPort)
 
-		resp, err := sendSOAPRequest(targetURL, soapAction, soapRequest)
+		resp, err := sendSOAPRequest(testFramework.MountebankClient.HTTPClient, targetURL, soapAction, soapRequest)
 		Expect(err).NotTo(HaveOccurred(), "Failed to send SOAP request")
 		Expect(resp.StatusCode).To(Equal(http.StatusOK))
 

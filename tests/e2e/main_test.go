@@ -6,12 +6,13 @@ import (
 	"kafka-soap-e2e-test/services/consumer/models"
 	"log"
 	"math/rand"
-	"os" // Re-added for strings.Contains
 	"strings"
 	"testing"
 	"time"
 
 	adminClient "kafka-soap-e2e-test/tests/clients" // Import the clients package with an alias
+	framework "kafka-soap-e2e-test/tests/framework" // Import the framework package
+
 	"github.com/confluentinc/confluent-kafka-go/v2/kafka"
 	. "github.com/onsi/ginkgo/v2"
 	. "github.com/onsi/gomega"
@@ -28,32 +29,19 @@ const (
 	kafkaResponseTopic = "Response"
 )
 
-var _ = Describe("Kafka SOAP E2E Test Suite", Ordered, func() {
-	var kafkaClient *adminClient.KafkaClient // Use the new KafkaClient struct
-	var kycClient *adminClient.AdminAPIClient
-	var rng *rand.Rand         // Declare rng here
-	var kycAdminBaseURL string // Declare kycAdminBaseURL here
+var rng *rand.Rand // Declare rng here
 
+var _ = Describe("Kafka SOAP E2E Test Suite", Ordered, func() {
 	BeforeAll(func() {
 		defer GinkgoRecover()
 		log.SetOutput(GinkgoWriter) // Redirect standard logger to GinkgoWriter
-		bootstrapServers := os.Getenv("KAFKA_BOOTSTRAP_SERVERS")
-		if bootstrapServers == "" {
-			bootstrapServers = "127.0.0.1:9092" // Default for local execution outside Docker Compose
-		}
 
-		kycAdminBaseURL = os.Getenv("KYC_ADMIN_BASE_URL")
-		if kycAdminBaseURL == "" {
-			kycAdminBaseURL = "http://127.0.0.1:8081" // Default for local execution
-		}
-
-		// Initialize KafkaClient
 		var err error
-		kafkaClient, err = adminClient.NewKafkaClient(bootstrapServers)
-		Expect(err).NotTo(HaveOccurred(), "Failed to create Kafka client")
+		testFramework, err = framework.NewFramework("../config.yaml") // Corrected path to config.yaml
+		Expect(err).NotTo(HaveOccurred(), "Failed to initialize test framework")
 
 		// Wait for Kafka to be ready using the new client
-		err = kafkaClient.WaitForKafka(60 * time.Second) // Give Kafka up to 60 seconds
+		err = testFramework.KafkaClient.WaitForKafka(60 * time.Second) // Give Kafka up to 60 seconds
 		Expect(err).NotTo(HaveOccurred(), "Kafka did not become ready")
 
 		// A small additional sleep after Kafka is ready, just in case services need to catch up
@@ -62,14 +50,12 @@ var _ = Describe("Kafka SOAP E2E Test Suite", Ordered, func() {
 		// Seed the random number generator for unique correlation IDs
 		rng = rand.New(rand.NewSource(time.Now().UnixNano())) // Initialize rng here
 
-		// Initialize Admin API Client
-		kycClient = adminClient.NewAdminAPIClient(kycAdminBaseURL) // Updated call
-		Expect(kycClient).NotTo(BeNil(), "Admin API client should not be nil after initialization")
-
+		// Initialize Admin API Client is now handled by framework.NewFramework
+		Expect(testFramework.KycClient).NotTo(BeNil(), "Admin API client should not be nil after initialization")
 		fmt.Println("DEBUG: Starting Kafka topic creation process.")
 		// Ensure topics are clean before recreation
 		log.Printf("Attempting to delete Kafka topic: %s", kafkaReceiveTopic)
-		err = kafkaClient.DeleteKafkaTopic(kafkaReceiveTopic)
+		err = testFramework.KafkaClient.DeleteKafkaTopic(kafkaReceiveTopic)
 		if err != nil {
 			log.Printf("Warning: Error deleting Kafka topic %s: %v. It might not have existed, proceeding.", kafkaReceiveTopic, err)
 		} else {
@@ -77,7 +63,7 @@ var _ = Describe("Kafka SOAP E2E Test Suite", Ordered, func() {
 		}
 
 		log.Printf("Attempting to delete Kafka topic: %s", kafkaResponseTopic)
-		err = kafkaClient.DeleteKafkaTopic(kafkaResponseTopic)
+		err = testFramework.KafkaClient.DeleteKafkaTopic(kafkaResponseTopic)
 		if err != nil {
 			log.Printf("Warning: Error deleting Kafka topic %s: %v. It might not have existed, proceeding.", kafkaResponseTopic, err)
 		} else {
@@ -89,7 +75,7 @@ var _ = Describe("Kafka SOAP E2E Test Suite", Ordered, func() {
 
 		// Create Kafka topics if they don't exist
 		log.Printf("Attempting to create Kafka topic: %s", kafkaReceiveTopic)
-		err = kafkaClient.CreateKafkaTopic(kafkaReceiveTopic, 1) // Use new client method
+		err = testFramework.KafkaClient.CreateKafkaTopic(kafkaReceiveTopic, 1) // Use new client method
 		if err != nil {
 			log.Printf("Error creating Kafka topic %s: %v", kafkaReceiveTopic, err)
 		}
@@ -97,7 +83,7 @@ var _ = Describe("Kafka SOAP E2E Test Suite", Ordered, func() {
 		log.Printf("Successfully handled Kafka topic %s creation/existence.", kafkaReceiveTopic)
 
 		log.Printf("Attempting to create Kafka topic: %s", kafkaResponseTopic)
-		err = kafkaClient.CreateKafkaTopic(kafkaResponseTopic, 1) // Use new client method
+		err = testFramework.KafkaClient.CreateKafkaTopic(kafkaResponseTopic, 1) // Use new client method
 		if err != nil {
 			log.Printf("Error creating Kafka topic %s: %v", kafkaResponseTopic, err)
 		}
@@ -110,18 +96,8 @@ var _ = Describe("Kafka SOAP E2E Test Suite", Ordered, func() {
 		fmt.Println("DEBUG: About to initialize Kafka Producer")
 
 		// Subscribe the Kafka consumer to the response topic
-		err = kafkaClient.Consumer.SubscribeTopics([]string{kafkaResponseTopic}, nil) // Use kafkaClient.Consumer
+		err = testFramework.KafkaClient.Consumer.SubscribeTopics([]string{kafkaResponseTopic}, nil) // Use testFramework.KafkaClient.Consumer
 		Expect(err).NotTo(HaveOccurred(), "Failed to subscribe to Kafka response topic")
-	})
-
-	AfterAll(func() {
-		defer GinkgoRecover()
-		if kafkaClient != nil {
-			kafkaClient.Close() // Close all clients in the KafkaClient struct
-		}
-		// Kafka topics created by kafkaClient.CreateKafkaTopic might need explicit deletion here
-		// if tests were to be truly isolated and cleanup after themselves more thoroughly.
-		// For E2E tests, docker-compose down handles full cleanup.
 	})
 
 	Context("SOAP message processing via Kafka", func() {
@@ -146,7 +122,7 @@ var _ = Describe("Kafka SOAP E2E Test Suite", Ordered, func() {
 				By(fmt.Sprintf("Admin Setup for '%s' test (ClientID: %s)", tc.TestName, tc.KafkaClientID))
 				// Ensure the client exists for READ, UPDATE, DELETE scenarios, or if it's the error test case
 				if tc.KafkaMessageType == "READ" || tc.KafkaMessageType == "UPDATE" || tc.KafkaMessageType == "DELETE" || tc.TestName == "READ clientError InternalError" || tc.TestName == "READ clientTimeout Timeout" {
-					_, readErr := kycClient.ReadUser(tc.KafkaClientID)
+					_, readErr := testFramework.KycClient.ReadUser(tc.KafkaClientID)
 					if readErr != nil && strings.Contains(readErr.Error(), "status: 404") {
 						defaultUserData := models.UserData{
 							ClientID: tc.KafkaClientID,
@@ -154,7 +130,7 @@ var _ = Describe("Kafka SOAP E2E Test Suite", Ordered, func() {
 							Status:   "Initial",
 							Message:  "Created by test setup",
 						}
-						Expect(kycClient.CreateUser(defaultUserData)).NotTo(HaveOccurred(), "Admin API: Failed to create user for test setup")
+						Expect(testFramework.KycClient.CreateUser(defaultUserData)).NotTo(HaveOccurred(), "Admin API: Failed to create user for test setup")
 						log.Printf("Admin API: Created client '%s' for test setup.", tc.KafkaClientID)
 					} else {
 						Expect(readErr).NotTo(HaveOccurred(), "Admin API: Failed to read user for test setup")
@@ -162,7 +138,7 @@ var _ = Describe("Kafka SOAP E2E Test Suite", Ordered, func() {
 					}
 				} else if tc.KafkaMessageType == "CREATE" {
 					// Ensure the client does not exist before creating
-					err = kycClient.DeleteUser(tc.KafkaClientID)
+					err = testFramework.KycClient.DeleteUser(tc.KafkaClientID)
 					if err != nil && !strings.Contains(err.Error(), "status: 404") {
 						Expect(err).NotTo(HaveOccurred(), "Admin API: Failed to delete user before create test")
 					}
@@ -171,17 +147,17 @@ var _ = Describe("Kafka SOAP E2E Test Suite", Ordered, func() {
 
 				// Apply specific action for error test case
 				if tc.TestName == "READ clientError InternalError" {
-					Expect(kycClient.SetAction(tc.KafkaClientID, "InternalError")).NotTo(HaveOccurred(), "Admin API: Failed to set InternalError action")
+					Expect(testFramework.KycClient.SetAction(tc.KafkaClientID, "InternalError")).NotTo(HaveOccurred(), "Admin API: Failed to set InternalError action")
 					log.Printf("Admin API: Set InternalError action for client '%s'.", tc.KafkaClientID)
 				} else if tc.TestName == "READ clientTimeout Timeout" {
-					Expect(kycClient.SetAction(tc.KafkaClientID, "Timeout")).NotTo(HaveOccurred(), "Admin API: Failed to set Timeout action")
+					Expect(testFramework.KycClient.SetAction(tc.KafkaClientID, "Timeout")).NotTo(HaveOccurred(), "Admin API: Failed to set Timeout action")
 					log.Printf("Admin API: Set Timeout action for client '%s'.", tc.KafkaClientID)
 				}
 
 				// Clear any *general* previous action overrides for this client before this specific test's setup,
 				// unless this test case itself is setting an action.
 				if tc.TestName != "READ clientError InternalError" && tc.TestName != "READ clientTimeout Timeout" {
-					Expect(kycClient.ClearAction(tc.KafkaClientID)).NotTo(HaveOccurred(), "Admin API: Failed to clear action before test")
+					Expect(testFramework.KycClient.ClearAction(tc.KafkaClientID)).NotTo(HaveOccurred(), "Admin API: Failed to clear action before test")
 					log.Printf("Admin API: Cleared actions for client '%s'.", tc.KafkaClientID)
 				}
 
@@ -203,7 +179,7 @@ var _ = Describe("Kafka SOAP E2E Test Suite", Ordered, func() {
 
 				By(fmt.Sprintf("Sending Kafka message type '%s' to '%s' topic (ClientID: %s, CorrelationID: %s)", tc.KafkaMessageType, kafkaReceiveTopic, tc.KafkaClientID, kafkaMsgToSend.CorrelationID))
 				// Produce message to 'Receive' topic
-				err = kafkaClient.Producer.Produce(&kafka.Message{ // Use kafkaClient.Producer
+				err = testFramework.KafkaClient.Producer.Produce(&kafka.Message{ // Use testFramework.KafkaClient.Producer
 					TopicPartition: kafka.TopicPartition{Topic: adminClient.KafkaStringPtr(kafkaReceiveTopic), Partition: kafka.PartitionAny}, // Use testKafkaClient.KafkaStringPtr
 					Value:          dummyKafkaMessage,
 					Headers:        []kafka.Header{{Key: "correlationId", Value: []byte(kafkaMsgToSend.CorrelationID)}},
@@ -211,7 +187,7 @@ var _ = Describe("Kafka SOAP E2E Test Suite", Ordered, func() {
 				Expect(err).NotTo(HaveOccurred(), "Failed to produce message to Receive topic")
 
 				// Wait for message delivery
-				ev := kafkaClient.Producer.Flush(10 * 1000) // Use kafkaClient.Producer
+				ev := testFramework.KafkaClient.Producer.Flush(10 * 1000) // Use testFramework.KafkaClient.Producer
 				Expect(ev).To(BeNumerically(">", 0), "Producer did not flush any messages")
 
 				By(fmt.Sprintf("Waiting for response on '%s' topic for triggered SOAP call (Expected CorrelationID: %s)", kafkaResponseTopic, kafkaMsgToSend.CorrelationID))
@@ -220,7 +196,7 @@ var _ = Describe("Kafka SOAP E2E Test Suite", Ordered, func() {
 				var receivedEntity models.UserData
 				startTime := time.Now()
 				for time.Since(startTime) < 60*time.Second {
-					ev := kafkaClient.Consumer.Poll(100) // Use kafkaClient.Consumer
+					ev := testFramework.KafkaClient.Consumer.Poll(100) // Use testFramework.KafkaClient.Consumer
 					if ev == nil {
 						continue // No event received, try again after a small delay
 					}
@@ -265,7 +241,7 @@ var _ = Describe("Kafka SOAP E2E Test Suite", Ordered, func() {
 						// Clean up created users or revert updated users
 						switch tc.KafkaMessageType {
 						case "CREATE":
-							Expect(kycClient.DeleteUser(tc.KafkaClientID)).NotTo(HaveOccurred(), "Admin API: Failed to delete user after create test")
+							Expect(testFramework.KycClient.DeleteUser(tc.KafkaClientID)).NotTo(HaveOccurred(), "Admin API: Failed to delete user after create test")
 							log.Printf("Admin API: Deleted client '%s' after create test.", tc.KafkaClientID)
 						case "UPDATE":
 							// Revert clientA123 to its original state (from user1.json)
@@ -275,7 +251,7 @@ var _ = Describe("Kafka SOAP E2E Test Suite", Ordered, func() {
 								Status:   "Approved",
 								Message:  "Initial KYC check passed",
 							}
-							Expect(kycClient.UpdateUser(originalClientA123)).NotTo(HaveOccurred(), "Admin API: Failed to revert clientA123 after update test")
+							Expect(testFramework.KycClient.UpdateUser(originalClientA123)).NotTo(HaveOccurred(), "Admin API: Failed to revert clientA123 after update test")
 							log.Printf("Admin API: Reverted client '%s' after update test.", tc.KafkaClientID)
 						case "DELETE":
 							// No special teardown needed as it's already deleted
@@ -283,10 +259,10 @@ var _ = Describe("Kafka SOAP E2E Test Suite", Ordered, func() {
 						}
 						// Always clear the action set for error injection, if applicable
 						if tc.TestName == "READ clientError InternalError" {
-							Expect(kycClient.ClearAction(tc.KafkaClientID)).NotTo(HaveOccurred(), "Admin API: Failed to clear InternalError action during teardown")
+							Expect(testFramework.KycClient.ClearAction(tc.KafkaClientID)).NotTo(HaveOccurred(), "Admin API: Failed to clear InternalError action during teardown")
 							log.Printf("Admin API: Cleared InternalError action for client '%s' during teardown.", tc.KafkaClientID)
 						} else if tc.TestName == "READ clientTimeout Timeout" {
-							Expect(kycClient.ClearAction(tc.KafkaClientID)).NotTo(HaveOccurred(), "Admin API: Failed to clear Timeout action during teardown")
+							Expect(testFramework.KycClient.ClearAction(tc.KafkaClientID)).NotTo(HaveOccurred(), "Admin API: Failed to clear Timeout action during teardown")
 							log.Printf("Admin API: Cleared Timeout action for client '%s' during teardown.", tc.KafkaClientID)
 						}
 						return // Message processed, exit the test case

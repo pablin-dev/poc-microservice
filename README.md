@@ -148,16 +148,17 @@ Once the Mountebank service is running (e.g., via `make up` if `mb-config.ejs` i
 
 ### Key-Value Store SOAP Impostor (Port 4546, `imposter2.ejs`)
 
-**1. Store a Key-Value Pair (SOAP):**
+**1. Store an XML Key-Value Pair (SOAP):**
 
 ```bash
-curl -X POST http://localhost:4546/ws -H 'Content-Type: application/soap+xml' -H 'SOAPAction: http://tempuri.org/Store' -d '<?xml version="1.0" encoding="utf-8"?><soapenv:Envelope xmlns:soapenv="http://schemas.xmlsoap.org/soap/envelope/" xmlns:tem="http://tempuri.org/"><soapenv:Header/><soapenv:Body><tem:StoreRequest><tem:Key>soapKey</tem:Key><tem:Value>soapValue</tem:Value></tem:StoreRequest></soapenv:Body></soapenv:Envelope>'
+curl -X POST http://localhost:4546/ws -H 'Content-Type: application/soap+xml' -H 'SOAPAction: http://tempuri.org/StoreXML' -d '<?xml version="1.0" encoding="utf-8"?><soapenv:Envelope xmlns:soapenv="http://schemas.xmlsoap.org/soap/envelope/" xmlns:tem="http://tempuri.org/"><soapenv:Header/><soapenv:Body><tem:StoreXML><tem:Key>soapXMLKey</tem:Key><tem:Data><customer><id>CUST001</id><name>Jane Doe</name><email>jane.doe@example.com</email></customer></tem:Data></tem:StoreXML></soapenv:Body></soapenv:Envelope>'
 ```
 
-**2. Retrieve a Key's Value (SOAP):**
+**2. Retrieve a Key's XML Value (SOAP):**
 
 ```bash
-curl -X POST http://localhost:4546/ws -H 'Content-Type: application/soap+xml' -H 'SOAPAction: http://tempuri.org/Retrieve' -d '<?xml version="1.0" encoding="utf-8"?><soapenv:Envelope xmlns:soapenv="http://schemas.xmlsoap.org/soap/envelope/" xmlns:tem="http://tempuri.org/"><soapenv:Header/><soapenv:Body><tem:RetrieveRequest><tem:Key>soapKey</tem:Key></tem:RetrieveRequest></soapenv:Body></soapenv:Envelope>'
+curl -X POST http://localhost:4546/ws -H 'Content-Type: application/soap+xml' -H 'SOAPAction: http://tempuri.org/Retrieve' -d '<?xml version="1.0" encoding="utf-8"?><soapenv:Envelope xmlns:soapenv="http://schemas.xmlsoap.org/soap/envelope/" xmlns:tem="http://tempuri.org/"><soapenv:Header/><soapenv:Body><tem:Retrieve><tem:Key>soapXMLKey</tem:Key></tem:Retrieve></soapenv:Body></soapenv:Envelope>'
+# Expected response body will contain the stored XML within <tem:Result>
 ```
 
 ### Key-Value Store Impostor (Port 4545, `impostor.ejs`)

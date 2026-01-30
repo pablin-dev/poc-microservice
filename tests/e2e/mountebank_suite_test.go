@@ -2,75 +2,136 @@ package e2e_test
 
 import (
 	"bytes"
+	"encoding/xml"
 	"fmt"
-	"kafka-soap-e2e-test/tests/clients"
+	"kafka-soap-e2e-test/tests/framework"
 	"log"
 	"net/http"
-	"os"
 	"time"
 
 	. "github.com/onsi/ginkgo/v2"
 	. "github.com/onsi/gomega"
 )
 
-var _ = Describe("Mountebank E2E Tests", Ordered, func() {
-	var mountebankClient *clients.MountebankClient
-	var mountebankBaseURL string
+var testFramework *framework.Framework
 
+var _ = Describe("Mountebank E2E Tests", Ordered, func() {
 	BeforeAll(func() {
 		defer GinkgoRecover()
 		log.SetOutput(GinkgoWriter)
 
-		mountebankBaseURL = os.Getenv("MOUNTEBANK_BASE_URL")
-		if mountebankBaseURL == "" {
-			mountebankBaseURL = "http://127.0.0.1:2525" // Default for local execution
-		}
+		var err error
+		testFramework, err = framework.NewFramework("../config.yaml") // config.yaml is in tests/
+		Expect(err).NotTo(HaveOccurred(), "Failed to initialize test framework")
 
-		mountebankClient = clients.NewMountebankClient(mountebankBaseURL)
-		Expect(mountebankClient).NotTo(BeNil(), "Mountebank client should not be nil")
+		Expect(testFramework.MountebankClient).NotTo(BeNil(), "Mountebank client should not be nil in framework")
 
-		err := mountebankClient.Init(30 * time.Second) // Use Init method which handles waiting and storing
+		err = testFramework.MountebankClient.Init(30 * time.Second) // Use Init method which handles waiting and storing
 		Expect(err).NotTo(HaveOccurred(), "Mountebank client did not initialize correctly")
 	})
 })
 
-// Helper functions for generating SOAP request bodies
-func generateStoreSOAPRequest(key, value string) string {
+// SoapEnvelope defines the structure for a SOAP 1.1 Envelope
+type SoapEnvelope struct {
+	XMLName      xml.Name    `xml:"soapenv:Envelope"`
+	XmlnsSoapEnv string      `xml:"xmlns:soapenv,attr"`
+	XmlnsTem     string      `xml:"xmlns:tem,attr"`
+	Header       *SoapHeader `xml:"soapenv:Header"`
+	Body         SoapBody    `xml:"soapenv:Body"`
+}
+
+// SoapHeader defines the structure for a SOAP Header
+type SoapHeader struct {
+	XMLName xml.Name `xml:"soapenv:Header"`
+	// Header can be empty or contain specific SOAP header elements
+}
+
+// SoapBody defines the structure for a SOAP Body
+type SoapBody struct {
+	XMLName    xml.Name           `xml:"soapenv:Body"`
+	StoreOp    *StoreOperation    `xml:"tem:Store,omitempty"`
+	RetrieveOp *RetrieveOperation `xml:"tem:Retrieve,omitempty"`
+	StoreXMLOp *StoreXMLOperation `xml:"tem:StoreXML,omitempty"` // New field for storing XML
+}
+
+// StoreOperation defines the structure for the <tem:Store> element
+type StoreOperation struct {
+	XMLName xml.Name `xml:"tem:Store"`
+	Key     string   `xml:"tem:Key"`
+	Value   string   `xml:"tem:Value"`
+}
+
+// StoreXMLOperation defines the structure for the <tem:StoreXML> element
+type StoreXMLOperation struct {
+	XMLName xml.Name `xml:"tem:StoreXML"`
+	Key     string   `xml:"tem:Key"`
+	Data    string   `xml:"tem:Data"` // This will hold the raw XML string
+}
+
+// RetrieveOperation defines the structure for the <tem:Retrieve> element
+type RetrieveOperation struct {
+	XMLName xml.Name `xml:"tem:Retrieve"`
+	Key     string   `xml:"tem:Key"`
+}
+
+// generateStoreXMLSOAPRequest generates a SOAP request for the StoreXML operation.
+
+func generateStoreXMLSOAPRequest(key, xmlData string) string {
+	envelope := SoapEnvelope{
+		XmlnsSoapEnv: "http://schemas.xmlsoap.org/soap/envelope/",
+
+		XmlnsTem: "http://tempuri.org/",
+
+		Header: &SoapHeader{},
+
+		Body: SoapBody{
+			StoreXMLOp: &StoreXMLOperation{
+				Key: key,
+
+				Data: xmlData,
+			},
+		},
+	}
+
+	output, err := xml.MarshalIndent(envelope, "", "  ")
+
+	Expect(err).NotTo(HaveOccurred(), "Failed to marshal StoreXML SOAP request")
+
 	return fmt.Sprintf(`<?xml version="1.0" encoding="utf-8"?>
-<soapenv:Envelope xmlns:soapenv="http://schemas.xmlsoap.org/soap/envelope/" xmlns:tem="http://tempuri.org/">
-  <soapenv:Header/>
-  <soapenv:Body>
-    <tem:Store>
-      <tem:Key>%s</tem:Key>
-      <tem:Value>%s</tem:Value>
-    </tem:Store>
-  </soapenv:Body>
-</soapenv:Envelope>`, key, value)
+
+%s`, string(output))
 }
 
 func generateRetrieveSOAPRequest(key string) string {
+	envelope := SoapEnvelope{
+		XmlnsSoapEnv: "http://schemas.xmlsoap.org/soap/envelope/",
+		XmlnsTem:     "http://tempuri.org/",
+		Header:       &SoapHeader{},
+		Body: SoapBody{
+			RetrieveOp: &RetrieveOperation{
+				Key: key,
+			},
+		},
+	}
+
+	output, err := xml.MarshalIndent(envelope, "", "  ")
+	Expect(err).NotTo(HaveOccurred(), "Failed to marshal Retrieve SOAP request")
+
 	return fmt.Sprintf(`<?xml version="1.0" encoding="utf-8"?>
-<soapenv:Envelope xmlns:soapenv="http://schemas.xmlsoap.org/soap/envelope/" xmlns:tem="http://tempuri.org/">
-  <soapenv:Header/>
-  <soapenv:Body>
-    <tem:Retrieve>
-      <tem:Key>%s</tem:Key>
-    </tem:Retrieve>
-  </soapenv:Body>
-</soapenv:Envelope>`, key)
+%s`, string(output))
 }
 
-func generateMissingKeyStoreSOAPRequest(value string) string {
+func generateMissingKeyStoreSOAPRequest(xmlData string) string {
 	return fmt.Sprintf(`<?xml version="1.0" encoding="utf-8"?>
 <soapenv:Envelope xmlns:soapenv="http://schemas.xmlsoap.org/soap/envelope/" xmlns:tem="http://tempuri.org/">
   <soapenv:Header/>
   <soapenv:Body>
-    <tem:Store>
+    <tem:StoreXML>
       <!-- tem:Key is missing -->
-      <tem:Value>%s</tem:Value>
-    </tem:Store>
+      <tem:Data>%s</tem:Data>
+    </tem:StoreXML>
   </soapenv:Body>
-</soapenv:Envelope>`, value)
+</soapenv:Envelope>`, xmlData)
 }
 
 func generateMissingValueStoreSOAPRequest(key string) string {
@@ -78,10 +139,10 @@ func generateMissingValueStoreSOAPRequest(key string) string {
 <soapenv:Envelope xmlns:soapenv="http://schemas.xmlsoap.org/soap/envelope/" xmlns:tem="http://tempuri.org/">
   <soapenv:Header/>
   <soapenv:Body>
-    <tem:Store>
+    <tem:StoreXML>
       <tem:Key>%s</tem:Key>
-      <!-- tem:Value is missing -->
-    </tem:Store>
+      <!-- tem:Data is missing -->
+    </tem:StoreXML>
   </soapenv:Body>
 </soapenv:Envelope>`, key)
 }
@@ -112,38 +173,41 @@ func generateUnknownActionSOAPRequest() string {
 
 // sendSOAPRequest is a helper function to send a SOAP request.
 
-func sendSOAPRequest(url, soapAction, requestBody string) (*http.Response, error) {
+func sendSOAPRequest(httpClient *http.Client, url, soapAction, requestBody string) (*http.Response, error) {
 	req, err := http.NewRequest("POST", url, bytes.NewBufferString(requestBody))
 	if err != nil {
 		return nil, err
 	}
+
 	req.Header.Set("Content-Type", "application/soap+xml")
+
 	req.Header.Set("SOAPAction", soapAction)
 
-	client := &http.Client{Timeout: 5 * time.Second}
-	return client.Do(req)
+	return httpClient.Do(req)
 }
 
-// sendJSONPostRequest is a helper function to send a JSON POST request.
-func sendJSONPostRequest(url, requestBody string) (*http.Response, error) {
+// sendJSONPostRequestHelper is a helper function to send a JSON POST request.
+
+func sendJSONPostRequestHelper(httpClient *http.Client, url, requestBody string) (*http.Response, error) {
 	req, err := http.NewRequest("POST", url, bytes.NewBufferString(requestBody))
 	if err != nil {
 		return nil, err
 	}
+
 	req.Header.Set("Content-Type", "application/json")
 
-	client := &http.Client{Timeout: 5 * time.Second}
-	return client.Do(req)
+	return httpClient.Do(req)
 }
 
-// sendJSONGetRequest is a helper function to send a JSON GET request.
-func sendJSONGetRequest(url string) (*http.Response, error) {
+// sendJSONGetRequestHelper is a helper function to send a JSON GET request.
+
+func sendJSONGetRequestHelper(httpClient *http.Client, url string) (*http.Response, error) {
 	req, err := http.NewRequest("GET", url, nil)
 	if err != nil {
 		return nil, err
 	}
+
 	req.Header.Set("Accept", "application/json")
 
-	client := &http.Client{Timeout: 5 * time.Second}
-	return client.Do(req)
+	return httpClient.Do(req)
 }

@@ -4,6 +4,7 @@ import (
 	"context"
 	"fmt"
 	"log"
+	"strings"
 	"time"
 
 	"github.com/confluentinc/confluent-kafka-go/v2/kafka"
@@ -14,39 +15,40 @@ type KafkaClient struct {
 	Producer         *kafka.Producer
 	Consumer         *kafka.Consumer
 	Admin            *kafka.AdminClient
-	BootstrapServers string
+	BootstrapServers []string
 }
 
 // NewKafkaClient initializes a new KafkaClient.
-func NewKafkaClient(bootstrapServers string) (*KafkaClient, error) {
-	var err error
+func NewKafkaClient(bootstrapServers []string) (*KafkaClient, error) {
+	var clientErr error
+	bootstrapServersStr := strings.Join(bootstrapServers, ",")
 	kc := &KafkaClient{
 		BootstrapServers: bootstrapServers,
 	}
 
 	// Initialize Producer
-	kc.Producer, err = kafka.NewProducer(&kafka.ConfigMap{"bootstrap.servers": bootstrapServers})
-	if err != nil {
-		return nil, fmt.Errorf("failed to create Kafka producer: %w", err)
+	kc.Producer, clientErr = kafka.NewProducer(&kafka.ConfigMap{"bootstrap.servers": bootstrapServersStr})
+	if clientErr != nil {
+		return nil, fmt.Errorf("failed to create Kafka producer: %w", clientErr)
 	}
 
 	// Initialize Consumer
-	kc.Consumer, err = kafka.NewConsumer(&kafka.ConfigMap{
-		"bootstrap.servers": bootstrapServers,
+	kc.Consumer, clientErr = kafka.NewConsumer(&kafka.ConfigMap{
+		"bootstrap.servers": bootstrapServersStr,
 		"group.id":          "e2e-test-group",
 		"auto.offset.reset": "earliest",
 	})
-	if err != nil {
+	if clientErr != nil {
 		kc.Producer.Close()
-		return nil, fmt.Errorf("failed to create Kafka consumer: %w", err)
+		return nil, fmt.Errorf("failed to create Kafka consumer: %w", clientErr)
 	}
 
 	// Initialize AdminClient
-	kc.Admin, err = kafka.NewAdminClient(&kafka.ConfigMap{"bootstrap.servers": bootstrapServers})
-	if err != nil {
+	kc.Admin, clientErr = kafka.NewAdminClient(&kafka.ConfigMap{"bootstrap.servers": bootstrapServersStr})
+	if clientErr != nil {
 		kc.Producer.Close()
 		kc.Consumer.Close()
-		return nil, fmt.Errorf("failed to create Kafka admin client: %w", err)
+		return nil, fmt.Errorf("failed to create Kafka admin client: %w", clientErr)
 	}
 
 	return kc, nil
@@ -67,7 +69,7 @@ func (kc *KafkaClient) Close() {
 
 // WaitForKafka polls Kafka until it's ready to serve requests or a timeout occurs.
 func (kc *KafkaClient) WaitForKafka(timeout time.Duration) error {
-	log.Printf("Waiting for Kafka to be ready at %s for %s", kc.BootstrapServers, timeout)
+	log.Printf("Waiting for Kafka to be ready at %s for %s", strings.Join(kc.BootstrapServers, ","), timeout)
 	endTime := time.Now().Add(timeout)
 	for time.Now().Before(endTime) {
 		// Try to describe the cluster to confirm active connection and cluster metadata availability

@@ -1,27 +1,21 @@
 function (request, state) {
-    state.map = state.map || {}; // Ensure map is initialized
+    state.map = state.map || {}; // Initialize map if it doesn't exist
     const { create } = require('xmlbuilder2'); // Import xmlbuilder2
 
-    // Helper to generate a generic SOAP success response for Retrieve
-    // Helper to generate a generic SOAP success response for Retrieve
-    const generateRetrieveSuccessXml = (value) => {
-        const builder = create({ version: '1.0', encoding: 'utf-8' });
-        const envelopeBuilder = builder.ele('soapenv:Envelope', {
+    // Helper to generate a generic SOAP success response
+    const generateSuccessXml = (message) => {
+        return create({ version: '1.0', encoding: 'utf-8' })
+            .ele('soapenv:Envelope', {
                 'xmlns:soapenv': 'http://schemas.xmlsoap.org/soap/envelope/',
                 'xmlns:tem': 'http://tempuri.org/'
-            });
-        envelopeBuilder.ele('soapenv:Header').up();
-        const bodyBuilder = envelopeBuilder.ele('soapenv:Body');
-        const retrieveResponseBuilder = bodyBuilder.ele('tem:RetrieveResponse');
-        retrieveResponseBuilder.ele('tem:Result'); // Just create the tag, will replace content
-
-        let resultXml = builder.end({ prettyPrint: true, headless: true });
-        
-        // Inject the raw XML value by string replacement
-        let finalXml = resultXml.replace('<tem:Result/>', '<tem:Result>' + value + '</tem:Result>')
-                                .replace('<tem:Result></tem:Result>', '<tem:Result>' + value + '</tem:Result>'); // Handle both self-closing and explicit close tags
-
-        return finalXml;
+            })
+            .ele('soapenv:Header').up()
+            .ele('soapenv:Body')
+                .ele('tem:StoreXMLResponse')
+                    .ele('tem:Result').txt(message).up()
+                .up()
+            .up()
+        .end({ prettyPrint: true, headless: true });
     };
 
     // Helper to generate a generic SOAP error response
@@ -43,17 +37,26 @@ function (request, state) {
     try {
         var xpath = require('xpath');
         var DOMParser = require('xmldom').DOMParser; // CORRECTED
+
         var doc = new DOMParser().parseFromString(request.body, 'text/xml'); // CORRECTED
 
         const keyNodes = xpath.select("//*[local-name()='Key' and namespace-uri()='http://tempuri.org/']", doc);
+        const dataNodes = xpath.select("//*[local-name()='Data' and namespace-uri()='http://tempuri.org/']", doc);
 
         let key = '';
         if (keyNodes.length > 0 && keyNodes[0].firstChild) {
             key = keyNodes[0].firstChild.data;
         }
 
-        if (!key) {
-            const errorMessage = "Missing Key in SOAP request body";
+        let xmlData = '';
+        if (dataNodes.length > 0 && dataNodes[0].childNodes.length > 0) {
+            for (let i = 0; i < dataNodes[0].childNodes.length; i++) {
+                xmlData += dataNodes[0].childNodes[i].toString();
+            }
+        }
+        
+        if (!key || !xmlData) {
+            const errorMessage = "Missing Key or XML Data in SOAP request body";
             return {
                 statusCode: 400,
                 headers: { 'Content-Type': 'application/soap+xml; charset=utf-8' },
@@ -61,21 +64,12 @@ function (request, state) {
             };
         }
 
-        const value = state.map[key];
-
-        if (value === undefined) {
-            const errorMessage = "Key not found: " + key;
-            return {
-                statusCode: 404,
-                headers: { 'Content-Type': 'application/soap+xml; charset=utf-8' },
-                body: generateErrorXml(errorMessage)
-            };
-        }
+        state.map[key] = xmlData;
 
         return {
             statusCode: 200,
             headers: { 'Content-Type': 'application/soap+xml; charset=utf-8' },
-            body: generateRetrieveSuccessXml(value)
+            body: generateSuccessXml("XML Data stored successfully")
         };
     } catch (e) {
         return {

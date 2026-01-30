@@ -50,7 +50,7 @@ test-e2e:
 	go run github.com/onsi/ginkgo/v2/ginkgo -v ./tests/e2e/... || ( \
 		echo "E2E tests failed. Printing consumer-service and kyc-service logs:" && \
 		docker compose -f ${DOCKER_COMPOSE_FILE} logs consumer-service kyc-service && \
-		docker compose -f ${DOCKER_COMPOSE_FILE} down && \
+		# docker compose -f ${DOCKER_COMPOSE_FILE} down && \
 		exit 1 \
 	)
 

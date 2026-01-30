@@ -12,14 +12,14 @@
                         "method": "POST",
                         "headers": { 
                             "Content-Type": "application/soap+xml",
-                            "SOAPAction": "http://tempuri.org/Store"
+                            "SOAPAction": "http://tempuri.org/StoreXML"
                         }
                     }
                 }
             ],
             "responses": [
                 {
-                    "inject": "<%- stringify(filename, 'stubs/store_inject_soap.ejs') %>"
+                    "inject": "<%- stringify(filename, 'stubs/store_xml_inject.ejs') %>"
                 }
             ]
         },

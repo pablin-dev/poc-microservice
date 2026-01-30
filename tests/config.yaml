@@ -1,0 +1,7 @@
+kafka:
+  bootstrapServers: ["localhost:9092"]
+mountebank:
+  url: "http://localhost:2525"
+  timeoutInSeconds: 300
+kycAdmin:
+  baseURL: "http://127.0.0.1:8081"

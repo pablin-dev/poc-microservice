@@ -4,7 +4,7 @@ FROM node:24.11.1-alpine3.22 AS builder
 WORKDIR /app
 RUN chown -R node:node /app
 RUN npm install -g mountebank@2.9.1
-RUN npm install -g ejs xmldom xpath
+RUN npm install -g xmldom xpath xmlbuilder2
 COPY --chown=node:node tests/usecases/mountebank /app/config
 EXPOSE 2525
 EXPOSE 4545 
