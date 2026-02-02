@@ -1,0 +1,43 @@
+function (request, state) {
+    const { create } = require('xmlbuilder2');
+    var xpath = require('xpath');
+    var DOMParser = require('xmldom').DOMParser;
+
+    state.customerDataStore = state.customerDataStore || {};
+    var customerDataStore = state.customerDataStore;
+
+    var returnCode = "0";
+    var returnMessage = "Customer deleted successfully";
+
+    try {
+        var doc = new DOMParser().parseFromString(request.body, 'text/xml');
+        var custIdToDelete = xpath.select1text("//api:custId", doc, {api: 'http://api.com'});
+
+        if (custIdToDelete && customerDataStore[custIdToDelete]) {
+            delete customerDataStore[custIdToDelete];
+        } else {
+            returnCode = "1";
+            returnMessage = "Customer with ID " + custIdToDelete + " not found.";
+        }
+
+    } catch (e) {
+        returnCode = "1";
+        returnMessage = "Error parsing request or processing delete: " + e.message;
+    }
+
+    const root = create({ version: '1.0', encoding: 'utf-8' })
+        .ele('soap:Envelope', { 'xmlns:soap': 'http://test/soap-envelope', 'xmlns:api': 'http://api.com' })
+        .ele('soap:Body')
+        .ele('api:DeleteCustomerResponse')
+        .ele('api:returnCode').txt(returnCode).up()
+        .ele('api:returnMessage').txt(returnMessage).up()
+        .up()
+        .up()
+        .up();
+
+    return {
+        statusCode: 200,
+        headers: { 'Content-Type': 'application/soap+xml' },
+        body: root.end({ prettyPrint: true, headless: true })
+    };
+}

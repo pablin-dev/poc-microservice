@@ -1,0 +1,68 @@
+function (request, state) {
+    const { create } = require('xmlbuilder2');
+    var xpath = require('xpath');
+    var DOMParser = require('xmldom').DOMParser;
+
+    // Initialize customerDataStore if it doesn't exist (though not strictly needed for score,
+    // it's good practice for consistency if we were to link score to stored data later)
+    state.customerDataStore = state.customerDataStore || {};
+    var customerDataStore = state.customerDataStore; // Keep for consistency, but not used directly here
+
+    var returnCode = "0";
+    var returnMessage = "Score calculated successfully";
+    var score = 0;
+
+    try {
+        var doc = new DOMParser().parseFromString(request.body, 'text/xml');
+        var firstName = xpath.select1text("//api:firstName", doc, {api: 'http://api.com'});
+        var lastName = xpath.select1text("//api:lastName", doc, {api: 'http://api.com'});
+
+        var customFieldsNodes = xpath.select("//api:CustomField", doc, {api: 'http://api.com'});
+        var customFields = {};
+        customFieldsNodes.forEach(function(node) {
+            var key = xpath.select1text("api:key", node, {api: 'http://api.com'});
+            var value = xpath.select1text("api:value", node, {api: 'http://api.com'});
+            if (key && value) {
+                customFields[key] = value;
+            }
+        });
+
+        // Simple scoring logic
+        if (firstName && lastName) {
+            score += 10; // Base score for having a name
+        }
+        if (customFields['creditScore']) {
+            score += parseInt(customFields['creditScore']) / 100; // Add credit score influence
+        }
+        if (customFields['riskFactor'] === 'low') {
+            score += 50;
+        } else if (customFields['riskFactor'] === 'medium') {
+            score += 20;
+        }
+
+        // Ensure score is a positive number
+        score = Math.max(0, score);
+
+    } catch (e) {
+        returnCode = "1";
+        returnMessage = "Error parsing request or calculating score: " + e.message;
+        score = 0; // Reset score on error
+    }
+
+    const root = create({ version: '1.0', encoding: 'utf-8' })
+        .ele('soap:Envelope', { 'xmlns:soap': 'http://test/soap-envelope', 'xmlns:api': 'http://api.com' })
+        .ele('soap:Body')
+        .ele('api:GetCustomerScoreResponse')
+        .ele('api:returnCode').txt(returnCode).up()
+        .ele('api:returnMessage').txt(returnMessage).up()
+        .ele('api:score').txt(score.toFixed(0)).up()
+        .up()
+        .up()
+        .up();
+
+    return {
+        statusCode: 200,
+        headers: { 'Content-Type': 'application/soap+xml' },
+        body: root.end({ prettyPrint: true, headless: true })
+    };
+}

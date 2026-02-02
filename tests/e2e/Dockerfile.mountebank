@@ -4,11 +4,12 @@ FROM node:24.11.1-alpine3.22 AS builder
 WORKDIR /app
 RUN chown -R node:node /app
 RUN npm install -g mountebank@2.9.1
-RUN npm install -g xmldom xpath xmlbuilder2
+RUN npm install -g xmldom xpath xmlbuilder2 fast-xml-parser
 COPY --chown=node:node tests/usecases/mountebank /app/config
 EXPOSE 2525
 EXPOSE 4545 
 EXPOSE 4546
+EXPOSE 4548
 
 USER node
 
@@ -24,5 +25,9 @@ CMD ["start", \
     "--configfile", \
     "/app/config/mb-config.ejs", \
     "--allow-injection", \
+    "--js", "/usr/local/lib/node_modules/xpath/lib/xpath.js", \
+    "--js", "/usr/local/lib/node_modules/xmldom/lib/dom-parser.js", \
+    "--js", "/usr/local/lib/node_modules/xmlbuilder2/lib/index.js", \
+    "--js", "/usr/local/lib/node_modules/fast-xml-parser/src/fxp.js", \
 #    "--localOnly", \
     "--port", "2525"]

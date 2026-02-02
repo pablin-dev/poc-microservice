@@ -1,16 +1,22 @@
 function (request, state) {
-    const errorXml = `<soapenv:Envelope xmlns:soapenv="http://schemas.xmlsoap.org/soap/envelope/" xmlns:tem="http://tempuri.org/">
-   <soapenv:Header/>
-   <soapenv:Body>
-      <tem:ErrorResponse>
-         <tem:Message>ErrorMessagePlaceholder</tem:Message>
-      </tem:ErrorResponse>
-   </soapenv:Body>
-</soapenv:Envelope>`;
-    let errorResponse = errorXml.replace('ErrorMessagePlaceholder', 'No matching SOAP service found for the request.');
+    const { create } = require('xmlbuilder2');
+
+    const root = create({ version: '1.0', encoding: 'utf-8' })
+        .ele('soap:Envelope', { 'xmlns:soap': 'http://schemas.xmlsoap.org/soap/envelope/' })
+        .ele('soap:Body')
+        .ele('soap:Fault')
+        .ele('faultcode').txt('soap:Server').up()
+        .ele('faultstring').txt('Internal Server Error: Unhandled Request').up()
+        .ele('detail')
+        .ele('m:message', { 'xmlns:m': 'http://api.com' }).txt('The requested SOAP action or operation is not supported or could not be processed.').up()
+        .up()
+        .up()
+        .up()
+        .up();
+
     return {
         statusCode: 404,
-        headers: { 'Content-Type': 'application/soap+xml; charset=utf-8' },
-        body: errorResponse
+        headers: { 'Content-Type': 'application/soap+xml' },
+        body: root.end({ prettyPrint: true, headless: true })
     };
 }

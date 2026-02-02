@@ -1,4 +1,4 @@
-package e2e_test
+package e2e
 
 import (
 	"encoding/json"
@@ -17,24 +17,40 @@ import (
 	. "github.com/onsi/gomega"
 )
 
+var (
+	rng           *rand.Rand // Declare rng here
+	testFramework *framework.Framework
+)
+
 func TestE2E(t *testing.T) {
 	RegisterFailHandler(Fail)
 	RunSpecs(t, "E2E Suite")
 }
 
-var rng *rand.Rand // Declare rng here
+// Global setup for ALL files in this package
+var _ = BeforeSuite(func() {
+	log.SetOutput(GinkgoWriter) // Redirect standard logger to GinkgoWriter
+	var err error
+	testFramework, err = framework.NewFramework("../config.yaml") // Corrected path to config.yaml
+	Expect(err).NotTo(HaveOccurred(), "Failed to initialize test framework")
+
+	Expect(testFramework.MountebankClient).NotTo(BeNil(), "Mountebank client should not be nil in framework")
+	err = testFramework.MountebankClient.WaitForMountebank(30 * time.Second) // Added WaitForMountebank
+	Expect(err).NotTo(HaveOccurred(), "Mountebank did not become ready")
+	err = testFramework.MountebankClient.Init(30 * time.Second)
+	Expect(err).NotTo(HaveOccurred(), "Mountebank client did not initialize correctly")
+})
+
+// Optional: Clean up after all tests are done
+var _ = AfterSuite(func() {
+})
 
 var _ = Describe("Kafka SOAP E2E Test Suite", Ordered, func() {
 	BeforeAll(func() {
 		defer GinkgoRecover()
-		log.SetOutput(GinkgoWriter) // Redirect standard logger to GinkgoWriter
-
-		var err error
-		testFramework, err = framework.NewFramework("../config.yaml") // Corrected path to config.yaml
-		Expect(err).NotTo(HaveOccurred(), "Failed to initialize test framework")
 
 		// Wait for Kafka to be ready using the new client
-		err = testFramework.KafkaClient.WaitForKafka(60 * time.Second) // Give Kafka up to 60 seconds
+		err := testFramework.KafkaClient.WaitForKafka(60 * time.Second) // Give Kafka up to 60 seconds
 		Expect(err).NotTo(HaveOccurred(), "Kafka did not become ready")
 
 		// A small additional sleep after Kafka is ready, just in case services need to catch up

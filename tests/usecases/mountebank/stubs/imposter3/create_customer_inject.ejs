@@ -1,0 +1,72 @@
+function (request, state) {
+    const { create } = require('xmlbuilder2');
+    const { XMLParser } = require("fast-xml-parser");
+
+    // Initialize customerDataStore if it doesn't exist for this imposter
+    state.customerDataStore = state.customerDataStore || {};
+    var customerDataStore = state.customerDataStore;
+
+    var returnCode = "0";
+    var returnMessage = "Customer created successfully";
+    var custId = "";
+
+    // Helper function for deep value extraction (Path-to-Variable Pattern) - REMOVED FOR DEBUGGING
+    // function getDeepValue(obj, path) {
+    //     return path.split('.').reduce((acc, part) => (acc && acc[part] !== undefined) ? acc[part] : undefined, obj);
+    // }
+
+    const parser = new XMLParser({
+        ignoreDeclaration: true,
+    });
+    let jsonObj;
+
+    try {
+        jsonObj = parser.parse(request.body);
+        logger.info("Parsed XML for CreateCustomer using fast-xml-parser");
+
+        const createCustomerPayload = jsonObj?.['soapenv:Envelope']?.['soapenv:Body']?.['api:CreateCustomer'];
+        
+        if (!createCustomerPayload) {
+            throw new Error("Could not parse CreateCustomer payload from request body. Check XML structure and parser options.");
+        }
+
+        var customerId = createCustomerPayload['api:id'];
+
+        if (!customerId) {
+            var nextId = Object.keys(customerDataStore).length + 1;
+            customerId = nextId.toString();
+            createCustomerPayload['api:id'] = customerId; // Assign generated ID back to the payload
+        }
+
+        if (customerDataStore[customerId]) {
+            returnCode = "1";
+            returnMessage = "Customer with ID " + customerId + " already exists.";
+        } else {
+            customerDataStore[customerId] = createCustomerPayload;
+            custId = customerId;
+            logger.info("Customer " + custId + " stored.");
+        }
+
+    } catch (e) {
+        returnCode = "1";
+        returnMessage = "Error parsing request or processing create: " + e.message;
+        logger.error("Error in create_customer_inject: " + e.message);
+    }
+
+    const root = `<?xml version="1.0" encoding="utf-8"?>
+<soap:Envelope xmlns:soap="http://schemas.xmlsoap.org/soap/envelope/" xmlns:api="http://api.com">
+  <soap:Body>
+    <api:CreateCustomerResponse>
+      <api:returnCode>${returnCode}</api:returnCode>
+      <api:returnMessage>${returnMessage}</api:returnMessage>
+      <api:custId>${custId}</api:custId>
+    </api:CreateCustomerResponse>
+  </soap:Body>
+</soap:Envelope>`;
+
+    return {
+        statusCode: 200,
+        headers: { 'Content-Type': 'application/soap+xml' },
+        body: root
+    };
+}

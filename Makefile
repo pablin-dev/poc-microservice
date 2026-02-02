@@ -39,7 +39,7 @@ build-images:
 up: build-images
 	@echo "Starting Docker Compose services..."
 	docker compose -f ${DOCKER_COMPOSE_FILE} up -d
-	sleep 45
+	sleep 10
 
 down:
 	@echo "Stopping and removing Docker Compose services..."
@@ -47,12 +47,7 @@ down:
 
 test-e2e:
 	@echo "Running E2E tests locally..."
-	go run github.com/onsi/ginkgo/v2/ginkgo -v ./tests/e2e/... || ( \
-		echo "E2E tests failed. Printing consumer-service and kyc-service logs:" && \
-		docker compose -f ${DOCKER_COMPOSE_FILE} logs consumer-service kyc-service && \
-		# docker compose -f ${DOCKER_COMPOSE_FILE} down && \
-		exit 1 \
-	)
+	ginkgo -v ./tests/e2e/...
 
 tidy:
 	go mod tidy

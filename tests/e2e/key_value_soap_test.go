@@ -1,4 +1,4 @@
-package e2e_test
+package e2e
 
 import (
 	"fmt"
@@ -127,6 +127,6 @@ var _ = Context("Key-Value Store SOAP Impostor functionality on port 4546", func
 
 		bodyBytes, err := io.ReadAll(resp.Body)
 		Expect(err).NotTo(HaveOccurred(), "Failed to read error response body")
-		Expect(string(bodyBytes)).To(ContainSOAPElementWithValue("//tem:ErrorResponse/tem:Message", "No matching SOAP service found for the request."))
+		Expect(string(bodyBytes)).To(ContainSOAPElementWithValue("//*[local-name()='Fault']/*[local-name()='faultstring']", "Internal Server Error: Unhandled Request"))
 	})
 })

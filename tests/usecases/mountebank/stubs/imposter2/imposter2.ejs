@@ -19,7 +19,7 @@
             ],
             "responses": [
                 {
-                    "inject": "<%- stringify(filename, 'stubs/store_xml_inject.ejs') %>"
+                    "inject": "<%- stringify(filename, './stubs/imposter2/store_xml_inject.ejs') %>"
                 }
             ]
         },
@@ -38,14 +38,14 @@
             ],
             "responses": [
                 {
-                    "inject": "<%- stringify(filename, 'stubs/retrieve_inject_soap.ejs') %>"
+                    "inject": "<%- stringify(filename, './stubs/imposter2/retrieve_inject_soap.ejs') %>"
                 }
             ]
         },
         {
             "responses": [
                 {
-                    "inject": "<%- stringify(filename, 'stubs/default_error_inject.ejs') %>"
+                    "inject": "<%- stringify(filename, './stubs/default_error_inject.ejs') %>"
                 }
             ]
         }

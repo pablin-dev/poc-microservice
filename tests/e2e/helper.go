@@ -1,35 +1,13 @@
-package e2e_test
+package e2e
 
 import (
 	"bytes"
 	"encoding/xml"
 	"fmt"
-	"kafka-soap-e2e-test/tests/framework"
-	"log"
 	"net/http"
-	"time"
 
-	. "github.com/onsi/ginkgo/v2"
 	. "github.com/onsi/gomega"
 )
-
-var testFramework *framework.Framework
-
-var _ = Describe("Mountebank E2E Tests", Ordered, func() {
-	BeforeAll(func() {
-		defer GinkgoRecover()
-		log.SetOutput(GinkgoWriter)
-
-		var err error
-		testFramework, err = framework.NewFramework("../config.yaml") // config.yaml is in tests/
-		Expect(err).NotTo(HaveOccurred(), "Failed to initialize test framework")
-
-		Expect(testFramework.MountebankClient).NotTo(BeNil(), "Mountebank client should not be nil in framework")
-
-		err = testFramework.MountebankClient.Init(30 * time.Second) // Use Init method which handles waiting and storing
-		Expect(err).NotTo(HaveOccurred(), "Mountebank client did not initialize correctly")
-	})
-})
 
 // SoapEnvelope defines the structure for a SOAP 1.1 Envelope
 type SoapEnvelope struct {

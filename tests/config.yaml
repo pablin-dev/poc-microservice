@@ -14,6 +14,7 @@ mountebank:
       - hello: 4547
       - impostor: 4545
       - imposter2: 4546
+      - imposter3: 4548
   timeoutInSeconds: 300
 kycAdmin:
   baseURL: "http://127.0.0.1:8081"

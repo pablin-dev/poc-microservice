@@ -1,0 +1,160 @@
+{
+  "port": 4548,
+  "protocol": "http",
+  "name": "Customer Information SOAP Impostor",
+  "recordRequests": true,
+  "stubs": [
+    {
+      "predicates": [
+        {
+          "equals": {
+            "path": "/ws",
+            "method": "POST"
+          }
+        },
+        {
+          "equals": {
+            "headers": {
+              "Content-Type": "application/soap+xml"
+            }
+          }
+        },
+        {
+          "matches": {
+            "headers": {
+              "SOAPAction": ".*CreateCustomer.*"
+            }
+          }
+        }
+      ],
+      "responses": [
+        {
+          "inject": "<%- stringify(filename, './stubs/imposter3/create_customer_inject.ejs') %>"
+        }
+      ]
+    },
+    {
+      "predicates": [
+        {
+          "equals": {
+            "path": "/ws",
+            "method": "POST"
+          }
+        },
+        {
+          "equals": {
+            "headers": {
+              "Content-Type": "application/soap+xml"
+            }
+          }
+        },
+        {
+          "matches": {
+            "headers": {
+              "SOAPAction": ".*DeleteCustomer.*"
+            }
+          }
+        }
+      ],
+      "responses": [
+        {
+          "inject": "<%- stringify(filename, './stubs/imposter3/delete_customer_inject.ejs') %>"
+        }
+      ]
+    },
+    {
+      "predicates": [
+        {
+          "equals": {
+            "path": "/ws",
+            "method": "POST"
+          }
+        },
+        {
+          "equals": {
+            "headers": {
+              "Content-Type": "application/soap+xml"
+            }
+          }
+        },
+        {
+          "matches": {
+            "headers": {
+              "SOAPAction": ".*RenameCustomer.*"
+            }
+          }
+        }
+      ],
+      "responses": [
+        {
+          "inject": "<%- stringify(filename, './stubs/imposter3/rename_customer_inject.ejs') %>"
+        }
+      ]
+    },
+    {
+      "predicates": [
+        {
+          "equals": {
+            "path": "/ws",
+            "method": "POST"
+          }
+        },
+        {
+          "equals": {
+            "headers": {
+              "Content-Type": "application/soap+xml"
+            }
+          }
+        },
+        {
+          "matches": {
+            "headers": {
+              "SOAPAction": ".*GetCustomerScore.*"
+            }
+          }
+        }
+      ],
+      "responses": [
+        {
+          "inject": "<%- stringify(filename, './stubs/imposter3/get_customer_score_inject.ejs') %>"
+        }
+      ]
+    },
+    {
+      "predicates": [
+        {
+          "equals": {
+            "path": "/ws",
+            "method": "POST"
+          }
+        },
+        {
+          "equals": {
+            "headers": {
+              "Content-Type": "application/soap+xml"
+            }
+          }
+        },
+        {
+          "matches": {
+            "headers": {
+              "SOAPAction": ".*GetCustomerInformation.*"
+            }
+          }
+        }
+      ],
+      "responses": [
+        {
+          "inject": "<%- stringify(filename, './stubs/imposter3/get_customer_information_inject.ejs') %>"
+        }
+        ]
+    },
+    {
+      "responses": [
+        {
+          "inject": "<%- stringify(filename, './stubs/default_error_inject.ejs') %>"
+        }
+      ]
+    }
+  ]
+}

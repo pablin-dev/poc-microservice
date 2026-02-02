@@ -220,3 +220,203 @@ The `docker-compose.yaml` defines the following services:
 *   **`kyc-provider-service`**: Builds and runs the Go KYC Provider microservice. Exposes port `8081`.
 *   **`consumer-service`**: Builds and runs the Go Kafka consumer microservice. It's dependent on `kafka` and `soap-service`.
 *   **`e2e-tests`**: Builds and runs the Ginkgo E2E test suite. It's dependent on `consumer-service` and connects to the Kafka broker within the Docker network.
+
+
+## Ginkgo E2E Tests
+
+To split Ginkgo E2E tests into multiple files, you need to understand that Ginkgo operates on a **per-package** basis. One package contains one "Suite" (the entry point), but that suite can execute tests from as many files as you like, provided they are in the same package.
+
+### 1. the Directory Structure
+
+The standard approach is to have one `_suite_test.go` file (the orchestrator) and multiple `_test.go` files (containing the actual specs).
+
+```text
+e2e/
+├── e2e_suite_test.go   <-- Entry point (RunSpecs)
+├── login_test.go       <-- Test specs for Login
+├── checkout_test.go    <-- Test specs for Checkout
+└── helpers.go          <-- Shared utilities (optional)
+
+```
+
+---
+
+### 2. the Suite File (`e2e_suite_test.go`)
+
+This file is generated when you run `ginkgo bootstrap`. It should only contain the `RunSpecs` call and suite-level setup/teardown.
+
+```go
+package e2e
+
+import (
+    "testing"
+    . "github.com/onsi/ginkgo/v2"
+    . "github.com/onsi/gomega"
+)
+
+func TestE2E(t *testing.T) {
+    RegisterFailHandler(Fail)
+    RunSpecs(t, "E2E Test Suite")
+}
+
+// Global setup for ALL files in this package
+var _ = BeforeSuite(func() {
+    // Start server, connect to DB, etc.
+})
+
+```
+
+---
+
+### 3. the Spec Files (`login_test.go`, Etc.)
+
+In these files, you don't need a `func Test...`. Instead, you use an anonymous variable `var _ =` to register your `Describe` blocks with the Ginkgo runner.
+
+```go
+package e2e // Must match the suite package
+
+import (
+    . "github.com/onsi/ginkgo/v2"
+    . "github.com/onsi/gomega"
+)
+
+var _ = Describe("Login Flow", func() {
+    It("should log in successfully with valid credentials", func() {
+        Expect(true).To(BeTrue())
+    })
+})
+
+```
+
+---
+
+### 4. Best Practices for Large E2E Suites
+
+* **Package Segregation:** If your E2E suite becomes massive (hundreds of tests), split them into **sub-packages** (e.g., `e2e/auth`, `e2e/api`). Each sub-package will then have its own `_suite_test.go`.
+* **Running Sub-packages:** Use `ginkgo -r` to run tests recursively through all sub-packages.
+* **Shared State:** Use `BeforeSuite` in the main entry point if all tests need a shared resource, but be careful with parallel execution.
+* **Parallelism:** When you run `ginkgo -p`, Ginkgo will parallelize the `It` blocks across different processes. If your files are in the same package, they will be treated as one big pool of tests.
+
+### How to Generate a New File Quickly:
+
+Instead of manual creation, use the Ginkgo CLI inside your package folder:
+
+```bash
+ginkgo generate login
+
+```
+
+This creates `login_test.go` with the correct boilerplate for you.
+
+In a Ginkgo E2E suite, `helpers.go` (or a `utils` folder) is where you house the logic that doesn't actually "test" anything but makes testing possible—like API clients, database cleaners, or custom matchers.
+
+Since all files in your `e2e` directory share the same **package name**, any exported (capitalized) or unexported (lowercase) function in `helpers.go` is automatically visible to all your `_test.go` files.
+
+---
+
+### 1. The Simple Approach: Package-Level Helpers
+
+If your helpers are specific to the E2E suite, just keep them in the same package. You don't need to import anything special; just call the functions.
+
+**`e2e/helpers.go`**
+
+```go
+package e2e
+
+import "time"
+
+// LoginUser is accessible to all files in package e2e
+func LoginUser(username, password string) string {
+    // Logic to perform login and return a token
+    return "mock-token"
+}
+
+const DefaultTimeout = 5 * time.Second
+
+```
+
+**`e2e/login_test.go`**
+
+```go
+var _ = Describe("Login", func() {
+    It("uses the helper", func() {
+        token := LoginUser("admin", "password123") // No import needed!
+        Expect(token).NotTo(BeEmpty())
+    })
+})
+
+```
+
+---
+
+### 2. The Structured Approach: Shared Utilities
+
+If you want to use these helpers across **multiple different packages** (e.g., in both `e2e/auth` and `e2e/billing`), you should move them to a dedicated internal package.
+
+**Directory Structure:**
+
+```text
+project/
+├── internal/
+│   └── testutils/
+│       └── client.go    <-- Shared logic
+└── e2e/
+    ├── auth/
+    │   └── login_test.go
+    └── billing/
+        └── invoice_test.go
+
+```
+
+**`internal/testutils/client.go`**
+
+```go
+package testutils
+
+// Must be Capitalized to be exported
+func CreateTestDatabase() { 
+    /* ... */ 
+}
+
+```
+
+**`e2e/auth/login_test.go`**
+
+```go
+package auth
+
+import "project/internal/testutils"
+
+var _ = BeforeSuite(func() {
+    testutils.CreateTestDatabase()
+})
+
+```
+
+---
+
+### 3. Creating Custom Gomega Matchers
+
+A common "pro" move in `helpers.go` is to create custom Gomega matchers to make your E2E tests read like English.
+
+**`e2e/helpers.go`**
+
+```go
+func BeAValidToken() gtypes.GomegaMatcher {
+    return MatchRegexp(`^[A-Za-z0-9-_=]+\.[A-Za-z0-9-_=]+\.?[A-Za-z0-9-_.+/=]*$`)
+}
+
+```
+
+**Usage:**
+
+```go
+Expect(token).To(BeAValidToken())
+
+```
+
+### Important Warning: Global Variables
+
+When splitting tests into multiple files, avoid defining global variables in `helpers.go` that are modified by tests. Ginkgo often runs tests in **parallel nodes** (different processes). If `File A` changes a global variable, `File B` might not see that change, or it might cause a race condition.
+
+Always prefer passing objects (like an API client) into functions rather than relying on a global "State."

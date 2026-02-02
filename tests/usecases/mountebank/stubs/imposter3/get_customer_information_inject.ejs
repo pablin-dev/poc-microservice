@@ -1,0 +1,103 @@
+function (request, state) {
+    const { create } = require('xmlbuilder2');
+    const { XMLParser } = require("fast-xml-parser");
+
+    state.customerDataStore = state.customerDataStore || {};
+    var customerDataStore = state.customerDataStore;
+
+    var returnCode = "0";
+    var returnMessage = "Customer information retrieved successfully";
+    var customerDataElement = null; // Will store the xmlbuilder2 element for CustomerData
+
+    // Remove getDeepValue helper function as optional chaining is used directly
+    // function getDeepValue(obj, path) {
+    //     return path.split('.').reduce((acc, part) => (acc && acc[part] !== undefined) ? acc[part] : undefined, obj);
+    // }
+
+    const parser = new XMLParser({
+        ignoreDeclaration: true,
+    });
+    let jsonObj;
+
+    try {
+        jsonObj = parser.parse(request.body);
+        logger.info("Parsed XML for GetCustomerInformation using fast-xml-parser"); // Added logging for consistency
+
+        const getCustomerInfoPayload = jsonObj?.['soapenv:Envelope']?.['soapenv:Body']?.['api:GetCustomerInformation'];
+        
+        // Ensure getCustomerInfoPayload is not undefined before proceeding
+        if (!getCustomerInfoPayload) {
+            throw new Error("Could not parse GetCustomerInformation payload from request body. Check XML structure and parser options.");
+        }
+        var custIdToRetrieve = getCustomerInfoPayload['api:custId'];
+
+        if (custIdToRetrieve && customerDataStore[custIdToRetrieve]) {
+            var customer = customerDataStore[custIdToRetrieve];
+
+            // Manually construct the api:CustomerData XML element
+            const customerDataBuilder = create(); // Create an empty document
+            customerDataElement = customerDataBuilder.ele('api:CustomerData'); // Add the root CustomerData element
+
+            customerDataElement.ele('api:id').txt(customer['api:id'] || '').up();
+            customerDataElement.ele('api:firstName').txt(customer['api:firstName'] || '').up();
+            customerDataElement.ele('api:lastName').txt(customer['api:lastName'] || '').up();
+            customerDataElement.ele('api:email').txt(customer['api:email'] || '').up();
+            customerDataElement.ele('api:phone').txt(customer['api:phone'] || '').up();
+            customerDataElement.ele('api:address').txt(customer['api:address'] || '').up();
+            customerDataElement.ele('api:city').txt(customer['api:city'] || '').up();
+            customerDataElement.ele('api:state').txt(customer['api:state'] || '').up();
+            customerDataElement.ele('api:zipCode').txt(customer['api:zipCode'] || '').up();
+            customerDataElement.ele('api:country').txt(customer['api:country'] || '').up();
+            customerDataElement.ele('api:dateOfBirth').txt(customer['api:dateOfBirth'] || '').up();
+            customerDataElement.ele('api:accountStatus').txt(customer['api:accountStatus'] || '').up();
+            customerDataElement.ele('api:membershipLevel').txt(customer['api:membershipLevel'] || '').up();
+            customerDataElement.ele('api:lastActivity').txt(customer['api:lastActivity'] || '').up();
+            customerDataElement.ele('api:registrationDate').txt(customer['api:registrationDate'] || '').up();
+            customerDataElement.ele('api:preferredContact').txt(customer['api:preferredContact'] || '').up();
+            
+            // Handle custom fields
+            if (customer['api:CustomField']) {
+                const customFields = Array.isArray(customer['api:CustomField']) ? customer['api:CustomField'] : [customer['api:CustomField']];
+                customFields.forEach(field => {
+                    customerDataElement.ele('api:CustomField')
+                        .ele('api:key').txt(field['api:key'] || '').up()
+                        .ele('api:value').txt(field['api:value'] || '').up()
+                        .up();
+                });
+            }
+
+        } else {
+            returnCode = "1";
+            returnMessage = "Customer with ID " + custIdToRetrieve + " not found.";
+        }
+
+    } catch (e) {
+        returnCode = "1";
+        returnMessage = "Error parsing request or retrieving customer information: " + e.message;
+    }
+
+    let customerDataXml = '';
+    if (customerDataElement) {
+        // Since customerDataElement is now an xmlbuilder2 element, we need to convert it to string
+        // before embedding it into the template literal.
+        // It already contains the api:CustomerData with imported customer data.
+        customerDataXml = customerDataElement.end({ prettyPrint: false, headless: true });
+    }
+
+    const root = `<?xml version="1.0" encoding="utf-8"?>
+<soap:Envelope xmlns:soap="http://schemas.xmlsoap.org/soap/envelope/" xmlns:api="http://api.com">
+  <soap:Body>
+    <api:GetCustomerInformationResponse>
+      <api:returnCode>${returnCode}</api:returnCode>
+      <api:returnMessage>${returnMessage}</api:returnMessage>
+      ${customerDataXml}
+    </api:GetCustomerInformationResponse>
+  </soap:Body>
+</soap:Envelope>`;
+
+    return {
+        statusCode: 200,
+        headers: { 'Content-Type': 'application/soap+xml' },
+        body: root
+    };
+}
