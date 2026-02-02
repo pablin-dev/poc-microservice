@@ -1,9 +1,10 @@
 package producer
 
 import (
+	"context"
 	"log"
 
-	"github.com/confluentinc/confluent-kafka-go/v2/kafka"
+	"github.com/segmentio/kafka-go"
 )
 
 const (
@@ -11,12 +12,10 @@ const (
 )
 
 // KafkaProducerInterface defines the interface for the Kafka producer functionalities used.
-// This allows for mocking the kafka.Producer in tests.
+// This allows for mocking the kafka.Writer in tests.
 type KafkaProducerInterface interface {
-	Produce(msg *kafka.Message, deliveryChan chan kafka.Event) error
-	Events() chan kafka.Event
-	Flush(timeoutMs int) int
-	Close()
+	WriteMessages(ctx context.Context, msgs ...kafka.Message) error
+	Close() error
 }
 
 // Producer holds the Kafka producer instance (now using the interface)
@@ -25,11 +24,11 @@ type Producer struct {
 }
 
 // kafkaProducerCreator is a function type that allows injecting a mock kafka.NewProducer for testing.
-type kafkaProducerCreator func(conf *kafka.ConfigMap) (KafkaProducerInterface, error)
+type kafkaProducerCreator func(writer *kafka.Writer) (KafkaProducerInterface, error)
 
 // defaultKafkaProducerCreator is the default implementation that calls the real kafka.NewProducer.
-var defaultKafkaProducerCreator kafkaProducerCreator = func(conf *kafka.ConfigMap) (KafkaProducerInterface, error) {
-	return kafka.NewProducer(conf)
+var defaultKafkaProducerCreator kafkaProducerCreator = func(writer *kafka.Writer) (KafkaProducerInterface, error) {
+	return writer, nil
 }
 
 // NewProducer initializes a new Kafka producer.
@@ -37,63 +36,44 @@ var defaultKafkaProducerCreator kafkaProducerCreator = func(conf *kafka.ConfigMa
 func NewProducer(bootstrapServers string) (*Producer, error) {
 	log.Println("Consumer Service: Setting up Kafka producer...")
 
-	conf := &kafka.ConfigMap{"bootstrap.servers": bootstrapServers}
+	writer := &kafka.Writer{
+		Addr:     kafka.TCP(bootstrapServers),
+		Balancer: &kafka.LeastBytes{},
+	}
 
-	p, err := defaultKafkaProducerCreator(conf) // Use the creator function
+	p, err := defaultKafkaProducerCreator(writer) // Use the creator function
 	if err != nil {
 		log.Printf("Consumer Service: Failed to create Kafka producer: %v", err)
 		return nil, err
 	}
 	log.Println("Consumer Service: Kafka producer created.")
 
-	// Delivery report handler for producer
-	go func() {
-		for e := range p.Events() {
-			switch ev := e.(type) {
-			case *kafka.Message:
-				if ev.TopicPartition.Error != nil {
-					log.Printf("Consumer Service: Delivery failed: %v\n", ev.TopicPartition)
-				} else {
-					log.Printf("Consumer Service: Delivered message to topic %s [%d] at offset %v\n",
-						*ev.TopicPartition.Topic, ev.TopicPartition.Partition, ev.TopicPartition.Offset)
-				}
-			}
-		}
-	}()
-
 	return &Producer{writer: p}, nil
 }
 
 // Produce sends a message to Kafka
-func (p *Producer) Produce(topic *string, value []byte, headers []kafka.Header) error {
-	log.Printf("Consumer Service: Producing message to Kafka topic: %s", *topic)
-	deliveryErr := p.writer.Produce(&kafka.Message{
-		TopicPartition: kafka.TopicPartition{Topic: topic, Partition: kafka.PartitionAny},
-		Value:          value,
-		Headers:        headers,
-	}, nil)
-	if deliveryErr != nil {
-		log.Printf("Consumer Service: Failed to produce message to Kafka: %v", deliveryErr)
-		return deliveryErr
+func (p *Producer) Produce(message kafka.Message) error {
+	log.Printf("Consumer Service: Producing message to Kafka topic: %s", message.Topic)
+	err := p.writer.WriteMessages(context.Background(), message)
+	if err != nil {
+		log.Printf("Consumer Service: Failed to produce message to Kafka: %v", err)
+		return err
 	}
 	log.Println("Consumer Service: Message sent to Kafka producer for delivery.")
 	return nil
 }
 
-// Flush waits for all messages to be delivered
-func (p *Producer) Flush(timeoutMs int) int {
-	log.Println("Consumer Service: Flushing Kafka producer...")
-	remaining := p.writer.Flush(timeoutMs)
-	log.Printf("Consumer Service: Producer flushed. Remaining messages: %d", remaining)
-	return remaining
-}
+
 
 // Close closes the producer connection
-func (p *Producer) Close() {
+func (p *Producer) Close() error {
 	log.Println("Consumer Service: Closing Kafka producer.")
-	p.writer.Close()
+	err := p.writer.Close()
+	if err != nil {
+		log.Printf("Consumer Service: Error closing Kafka producer: %v", err)
+	}
 	log.Println("Consumer Service: Kafka producer closed.")
+	return err
 }
 
-// KafkaStringPtr is a helper to get a string pointer for Kafka topic
-func KafkaStringPtr(s string) *string { return &s }
+

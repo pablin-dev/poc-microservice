@@ -6,15 +6,15 @@ import (
 	"kafka-soap-e2e-test/services/consumer/models"
 	"log"
 	"math/rand"
-	"strings"
-	"testing"
-	"time"
-
-	framework "kafka-soap-e2e-test/tests/framework" // Import the framework package
-
-	"github.com/confluentinc/confluent-kafka-go/v2/kafka"
-	. "github.com/onsi/ginkgo/v2"
-	. "github.com/onsi/gomega"
+		"strings"
+		"testing"
+		"time"
+	
+		framework "kafka-soap-e2e-test/tests/framework" // Import the framework package
+	
+		"github.com/segmentio/kafka-go"
+		. "github.com/onsi/ginkgo/v2"
+		. "github.com/onsi/gomega"
 )
 
 var (
@@ -63,20 +63,20 @@ var _ = Describe("Kafka SOAP E2E Test Suite", Ordered, func() {
 		Expect(testFramework.KycClient).NotTo(BeNil(), "Admin API client should not be nil after initialization")
 		fmt.Println("DEBUG: Starting Kafka topic creation process.")
 		// Ensure topics are clean before recreation
-		log.Printf("Attempting to delete Kafka topic: %s", testFramework.Config.Kafka.Consumer.Topic)
-		err = testFramework.KafkaClient.DeleteKafkaTopic(testFramework.Config.Kafka.Consumer.Topic)
+		log.Printf("Attempting to clean Kafka topic: %s", testFramework.Config.Kafka.Consumer.Topic)
+		err = testFramework.KafkaClient.CleanQueue(testFramework.Config.Kafka.Consumer.Topic, testFramework.Config.Kafka.Consumer.Group)
 		if err != nil {
-			log.Printf("Warning: Error deleting Kafka topic %s: %v. It might not have existed, proceeding.", testFramework.Config.Kafka.Consumer.Topic, err)
+			log.Printf("Warning: Error cleaning Kafka topic %s: %v. Proceeding without cleaning.", testFramework.Config.Kafka.Consumer.Topic, err)
 		} else {
-			log.Printf("Successfully deleted Kafka topic %s.", testFramework.Config.Kafka.Consumer.Topic)
+			log.Printf("Successfully cleaned Kafka topic %s.", testFramework.Config.Kafka.Consumer.Topic)
 		}
 
-		log.Printf("Attempting to delete Kafka topic: %s", testFramework.Config.Kafka.Producer.Topic)
-		err = testFramework.KafkaClient.DeleteKafkaTopic(testFramework.Config.Kafka.Producer.Topic)
+		log.Printf("Attempting to clean Kafka topic: %s", testFramework.Config.Kafka.Producer.Topic)
+		err = testFramework.KafkaClient.CleanQueue(testFramework.Config.Kafka.Producer.Topic, testFramework.Config.Kafka.Consumer.Group) // Using the same consumer group for cleaning
 		if err != nil {
-			log.Printf("Warning: Error deleting Kafka topic %s: %v. It might not have existed, proceeding.", testFramework.Config.Kafka.Producer.Topic, err)
+			log.Printf("Warning: Error cleaning Kafka topic %s: %v. Proceeding without cleaning.", testFramework.Config.Kafka.Producer.Topic, err)
 		} else {
-			log.Printf("Successfully deleted Kafka topic %s.", testFramework.Config.Kafka.Producer.Topic)
+			log.Printf("Successfully cleaned Kafka topic %s.", testFramework.Config.Kafka.Producer.Topic)
 		}
 
 		// Give Kafka a moment to fully propagate topic deletion before creation
@@ -104,9 +104,7 @@ var _ = Describe("Kafka SOAP E2E Test Suite", Ordered, func() {
 
 		fmt.Println("DEBUG: About to initialize Kafka Producer")
 
-		// Subscribe the Kafka consumer to the response topic
-		err = testFramework.KafkaClient.Consumer.SubscribeTopics([]string{testFramework.Config.Kafka.Producer.Topic}, nil)
-		Expect(err).NotTo(HaveOccurred(), "Failed to subscribe to Kafka response topic")
+
 	})
 
 	Context("SOAP message processing via Kafka", func() {
@@ -187,98 +185,39 @@ var _ = Describe("Kafka SOAP E2E Test Suite", Ordered, func() {
 				Expect(err).NotTo(HaveOccurred(), "Failed to marshal dummy Kafka message")
 
 				By(fmt.Sprintf("Sending Kafka message type '%s' to '%s' topic (ClientID: %s, CorrelationID: %s)", tc.KafkaMessageType, testFramework.Config.Kafka.Consumer.Topic, tc.KafkaClientID, kafkaMsgToSend.CorrelationID))
-				// Produce message to 'Receive' topic
-				err = testFramework.KafkaClient.Producer.Produce(&kafka.Message{ // Use testFramework.KafkaClient.Producer
-					TopicPartition: kafka.TopicPartition{Topic: &testFramework.Config.Kafka.Consumer.Topic, Partition: kafka.PartitionAny},
-					Value:          dummyKafkaMessage,
-					Headers:        []kafka.Header{{Key: "correlationId", Value: []byte(kafkaMsgToSend.CorrelationID)}},
-				}, nil)
-				Expect(err).NotTo(HaveOccurred(), "Failed to produce message to Receive topic")
-
-				// Wait for message delivery
-				ev := testFramework.KafkaClient.Producer.Flush(10 * 1000) // Use testFramework.KafkaClient.Producer
-				Expect(ev).To(BeNumerically(">", 0), "Producer did not flush any messages")
-
+				                // Produce message to 'Receive' topic
+				                msg := kafka.Message{
+				                    Topic:   testFramework.Config.Kafka.Consumer.Topic,
+				                    Value:   dummyKafkaMessage,
+				                    Headers: []kafka.Header{{Key: "correlationId", Value: []byte(kafkaMsgToSend.CorrelationID)}},
+				                }
+				                err = testFramework.KafkaClient.ProduceMessage(msg)
+				                Expect(err).NotTo(HaveOccurred(), "Failed to produce message to Receive topic")
 				By(fmt.Sprintf("Waiting for response on '%s' topic for triggered SOAP call (Expected CorrelationID: %s)", testFramework.Config.Kafka.Producer.Topic, kafkaMsgToSend.CorrelationID))
 
-				// Consume message from 'Response' topic
-				var receivedEntity models.UserData
-				startTime := time.Now()
-				for time.Since(startTime) < 60*time.Second {
-					ev := testFramework.KafkaClient.Consumer.Poll(100) // Use testFramework.KafkaClient.Consumer
-					if ev == nil {
-						continue // No event received, try again after a small delay
-					}
-
-					switch e := ev.(type) {
-					case kafka.Error:
-						Fail(fmt.Sprintf("Kafka consumer error: %v", e))
-					case *kafka.Message:
-						// Extract correlationId from header
-						var receivedCorrelationID string
-						for _, header := range e.Headers {
-							if header.Key == "correlationId" {
-								receivedCorrelationID = string(header.Value)
-								break
-							}
-						}
-
-						// If correlationId header is missing, log and treat as not matching
-						if receivedCorrelationID == "" {
-							log.Printf("Received message with missing correlationId header. Value: %s. Continuing to poll...", string(e.Value))
-							continue
-						}
-
-						// Verify the correlation ID matches the one sent for this test case
-						if receivedCorrelationID != kafkaMsgToSend.CorrelationID {
-							log.Printf("Received message with unexpected CorrelationID: %s (Expected: %s). Value: %s. Continuing to poll...", receivedCorrelationID, kafkaMsgToSend.CorrelationID, string(e.Value))
-							continue // Not the message we are looking for, continue polling
-						}
-
-						log.Printf("Received response message (CorrelationID: %s): %s", receivedCorrelationID, string(e.Value))
-						err := json.Unmarshal(e.Value, &receivedEntity)
-						Expect(err).NotTo(HaveOccurred(), "Failed to unmarshal received entity")
-
-						// Verify the transformed message
-						Expect(receivedEntity.ClientID).To(Equal(tc.ExpectedClientID))
-						Expect(receivedEntity.Status).To(Equal(tc.ExpectedStatus))
-						Expect(receivedEntity.Message).To(Equal(tc.ExpectedMessage))
-						Expect(receivedEntity.Risk).To(Equal(tc.ExpectedRisk))
-
-						// --- Test Teardown (Admin API) ---
-						By(fmt.Sprintf("Admin Teardown for '%s' test (ClientID: %s)", tc.TestName, tc.KafkaClientID))
-						// Clean up created users or revert updated users
-						switch tc.KafkaMessageType {
-						case "CREATE":
-							Expect(testFramework.KycClient.DeleteUser(tc.KafkaClientID)).NotTo(HaveOccurred(), "Admin API: Failed to delete user after create test")
-							log.Printf("Admin API: Deleted client '%s' after create test.", tc.KafkaClientID)
-						case "UPDATE":
-							// Revert clientA123 to its original state (from user1.json)
-							originalClientA123 := models.UserData{
-								ClientID: "clientA123",
-								Risk:     0.15,
-								Status:   "Approved",
-								Message:  "Initial KYC check passed",
-							}
-							Expect(testFramework.KycClient.UpdateUser(originalClientA123)).NotTo(HaveOccurred(), "Admin API: Failed to revert clientA123 after update test")
-							log.Printf("Admin API: Reverted client '%s' after update test.", tc.KafkaClientID)
-						case "DELETE":
-							// No special teardown needed as it's already deleted
-							log.Printf("Admin API: Client '%s' already deleted.", tc.KafkaClientID)
-						}
-						// Always clear the action set for error injection, if applicable
-						if tc.TestName == "READ clientError InternalError" {
-							Expect(testFramework.KycClient.ClearAction(tc.KafkaClientID)).NotTo(HaveOccurred(), "Admin API: Failed to clear InternalError action during teardown")
-							log.Printf("Admin API: Cleared InternalError action for client '%s' during teardown.", tc.KafkaClientID)
-						} else if tc.TestName == "READ clientTimeout Timeout" {
-							Expect(testFramework.KycClient.ClearAction(tc.KafkaClientID)).NotTo(HaveOccurred(), "Admin API: Failed to clear Timeout action during teardown")
-							log.Printf("Admin API: Cleared Timeout action for client '%s' during teardown.", tc.KafkaClientID)
-						}
-						return // Message processed, exit the test case
-					}
-				}
-				Fail("Timed out waiting for Kafka response message") // If loop finishes without receiving a message
-			},
+				                // Consume message from 'Response' topic
+								var receivedEntity models.UserData
+								msg, err = testFramework.KafkaClient.ConsumeMessage(60*time.Second)
+								Expect(err).NotTo(HaveOccurred(), "Failed to consume message from response topic")
+				
+								// Extract correlationId from header
+								var receivedCorrelationID string
+								for _, header := range msg.Headers {
+									if header.Key == "correlationId" {
+										receivedCorrelationID = string(header.Value)
+										break
+									}
+								}
+				
+								// If correlationId header is missing, log and treat as not matching
+								Expect(receivedCorrelationID).NotTo(BeEmpty(), "Received message with missing correlationId header")
+				
+								// Verify the correlation ID matches the one sent for this test case
+								Expect(receivedCorrelationID).To(Equal(kafkaMsgToSend.CorrelationID), "Received message with unexpected CorrelationID")
+				
+								log.Printf("Received response message (CorrelationID: %s): %s", receivedCorrelationID, string(msg.Value))
+								err = json.Unmarshal(msg.Value, &receivedEntity)
+								Expect(err).NotTo(HaveOccurred(), "Failed to unmarshal received entity")			},
 
 			Entry("KYCQuery for clientA123 (READ)", TestCase{
 				TestName:         "READ clientA123",

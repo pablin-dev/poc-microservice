@@ -14,7 +14,9 @@ import (
 	soapclientPkg "kafka-soap-e2e-test/services/consumer/clients/soapclient"
 	"kafka-soap-e2e-test/services/consumer/models"
 
-	"github.com/confluentinc/confluent-kafka-go/v2/kafka"
+	"github.com/segmentio/kafka-go"
+
+
 )
 
 func main() {
@@ -47,12 +49,7 @@ func main() {
 	}
 	defer consumer.Close()
 
-	err = consumer.SubscribeTopics([]string{consumerPkg.KafkaReceiveTopic})
-	if err != nil {
-		log.Println("Consumer Service: Shutting down due to Kafka topic subscription error.")
-		log.Fatalf("Failed to subscribe to topic %s: %v", consumerPkg.KafkaReceiveTopic, err)
-	}
-	log.Printf("Kafka Consumer subscribed to topic: %s", consumerPkg.KafkaReceiveTopic)
+
 
 	// Kafka Producer setup
 	producer, err := producerPkg.NewProducer(kafkaBootstrapServers)
@@ -74,9 +71,9 @@ func main() {
 
 	log.Println("Consumer Service: Entering Kafka message processing loop.")
 	for {
-		msg, err := consumer.ReadMessage(time.Second)
+		msg, err := consumer.ReadMessage(context.Background()) // Use background context for ReadMessage
 		if err == nil {
-			log.Printf("Received message from Kafka topic %s: %s\n", *msg.TopicPartition.Topic, string(msg.Value))
+			log.Printf("Received message from Kafka topic %s: %s\n", msg.Topic, string(msg.Value))
 			log.Printf("Consumer Service: Unmarshaling Kafka message. Content: %s", string(msg.Value))
 			var kafkaMsg models.KafkaMessage
 			if err := json.Unmarshal(msg.Value, &kafkaMsg); err != nil {
@@ -137,11 +134,15 @@ func main() {
 					continue
 				}
 				// Produce error message to Kafka
-				err = producer.Produce(producerPkg.KafkaStringPtr(producerPkg.KafkaResponseTopic), entityBytes, []kafka.Header{{Key: "correlationId", Value: []byte(kafkaMsg.CorrelationID)}})
+				errorMsg := kafka.Message{
+					Topic:   producerPkg.KafkaResponseTopic,
+					Value:   entityBytes,
+					Headers: []kafka.Header{{Key: "correlationId", Value: []byte(kafkaMsg.CorrelationID)}},
+				}
+				err = producer.Produce(errorMsg)
 				if err != nil {
 					log.Printf("Failed to produce error message to Kafka: %v", err)
 				}
-				producer.Flush(15 * 1000)
 				continue
 			}
 
@@ -157,16 +158,19 @@ func main() {
 			}
 
 			log.Printf("Consumer Service: Producing message to Kafka topic: %s. Entity: %s", producerPkg.KafkaResponseTopic, string(entityBytes))
-			err = producer.Produce(producerPkg.KafkaStringPtr(producerPkg.KafkaResponseTopic), entityBytes, []kafka.Header{{Key: "correlationId", Value: []byte(kafkaMsg.CorrelationID)}})
+			successMsg := kafka.Message{
+				Topic:   producerPkg.KafkaResponseTopic,
+				Value:   entityBytes,
+				Headers: []kafka.Header{{Key: "correlationId", Value: []byte(kafkaMsg.CorrelationID)}},
+			}
+			err = producer.Produce(successMsg)
 			if err != nil {
 				log.Printf("Failed to produce message to Kafka: %v", err)
 			} else {
 				log.Printf("Consumer Service: Successfully produced message to Kafka topic: %s", producerPkg.KafkaResponseTopic)
 			}
-
-			producer.Flush(15 * 1000)
-		} else if err.(kafka.Error).Code() != kafka.ErrTimedOut {
-			log.Printf("Consumer error: %v (%v)\n", err, msg)
+		} else if err != context.DeadlineExceeded && err != context.Canceled { // context.DeadlineExceeded for timeout from ReadMessage, context.Canceled if the context is cancelled
+			log.Printf("Consumer error: %v\n", err)
 		}
 	}
 }
@@ -176,20 +180,33 @@ func waitForKafkaConnection(bootstrapServers string, timeout time.Duration) erro
 	log.Printf("Consumer Service: Waiting for Kafka at %s to be ready for %s", bootstrapServers, timeout)
 	endTime := time.Now().Add(timeout)
 	for time.Now().Before(endTime) {
-		adminClient, err := kafka.NewAdminClient(&kafka.ConfigMap{"bootstrap.servers": bootstrapServers})
-		if err == nil {
-			// Try to get cluster metadata to confirm active connection
-			ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
-			_, err = adminClient.ClusterID(ctx)
-			cancel()
-			adminClient.Close() // Close immediately after check
+		ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
+		defer cancel() // Ensure context is cancelled even if check succeeds
 
-			if err == nil {
-				log.Println("Consumer Service: Kafka connection established.")
-				return nil
-			}
+		conn, err := kafka.DialContext(ctx, "tcp", bootstrapServers)
+		if err != nil {
+			log.Printf("Consumer Service: Kafka not yet ready (Dial failed): %v. Retrying...", err)
+			time.Sleep(1 * time.Second)
+			continue
 		}
-		log.Printf("Consumer Service: Kafka not yet ready: %v. Retrying...", err)
+		defer conn.Close() // Close the connection after each check
+
+		// Optionally, check controller to ensure it's healthy
+		_, err = conn.Controller()
+		if err != nil {
+			log.Printf("Consumer Service: Kafka not yet ready (Controller failed): %v. Retrying...", err)
+			time.Sleep(1 * time.Second)
+			continue
+		}
+
+		// Read partitions to verify cluster metadata can be fetched
+		_, err = conn.ReadPartitions()
+		if err == nil {
+			log.Println("Consumer Service: Kafka connection established and cluster metadata fetched.")
+			return nil
+		}
+
+		log.Printf("Consumer Service: Kafka not yet ready (ReadPartitions failed): %v. Retrying...", err)
 		time.Sleep(1 * time.Second)
 	}
 	return fmt.Errorf("timed out waiting for Kafka to be ready")

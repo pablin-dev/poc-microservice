@@ -21,7 +21,7 @@ func NewFramework(configPath string) (*Framework, error) {
 	}
 
 	// Initialize Kafka Client
-	kafkaClient, err := NewKafkaClient(cfg.Kafka.BootstrapServers, cfg.Kafka.Consumer.Group, cfg.Kafka.Consumer.Offset)
+	kafkaClient, err := NewKafkaClient(cfg.Kafka.BootstrapServers, cfg.Kafka.Consumer.Group, cfg.Kafka.Consumer.Offset, cfg.Kafka.Producer.Topic)
 	if err != nil {
 		return nil, fmt.Errorf("failed to create Kafka client: %w", err)
 	}

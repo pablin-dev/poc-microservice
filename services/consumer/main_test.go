@@ -1,16 +1,17 @@
 package main
 
 import (
-	"io"
-	"log"
-	"net/http"
-	"net/http/httptest"
-	"testing"
-	"time"
-
-	"github.com/confluentinc/confluent-kafka-go/v2/kafka"
-	"github.com/stretchr/testify/assert"
-	"github.com/stretchr/testify/require"
+		"context"
+		"io"
+		"log"
+		"net/http"
+		"net/http/httptest"
+		"testing"
+		"time"
+	
+		"github.com/segmentio/kafka-go"
+		"github.com/stretchr/testify/assert"
+		"github.com/stretchr/testify/require"
 )
 
 // Mock objects/interfaces for testing Kafka and SOAP client dependencies
@@ -115,50 +116,32 @@ func TestWaitForSoapService(t *testing.T) {
 
 // MockConsumer implements consumerPkg.ConsumerInterface (if such an interface existed)
 type MockConsumer struct {
-	Messages         chan *kafka.Message
-	Errors           chan error
-	SubscribedTopics []string
+	Messages chan kafka.Message
+	Errors   chan error
+	// SubscribedTopics is not applicable for segmentio/kafka-go.Reader in the same way
 }
 
-func (m *MockConsumer) SubscribeTopics(topics []string, rebalanceCb kafka.RebalanceCb) error {
-	m.SubscribedTopics = topics
-	return nil
-}
-func (m *MockConsumer) ReadMessage(timeout time.Duration) (*kafka.Message, error) {
+func (m *MockConsumer) ReadMessage(ctx context.Context) (kafka.Message, error) {
 	select {
 	case msg := <-m.Messages:
 		return msg, nil
 	case err := <-m.Errors:
-		return nil, err
-	case <-time.After(timeout):
-		return nil, kafka.NewError(kafka.ErrTimedOut, "mock timed out", false)
+		return kafka.Message{}, err
+	case <-ctx.Done():
+		return kafka.Message{}, ctx.Err()
 	}
 }
-func (m *MockConsumer) Close() {}
-
-// CommitMessage is not used in main.go directly, but would be part of a full consumer interface
-func (m *MockConsumer) CommitMessage(msg *kafka.Message) ([]kafka.TopicPartition, error) {
-	return nil, nil
-}
+func (m *MockConsumer) Close() error { return nil } // Close method for kafka.Reader returns error
 
 // MockProducer implements producerPkg.ProducerInterface (if such an interface existed)
 type MockProducer struct {
-	ProducedMessages [][]byte
-	DeliveryReports  chan kafka.Event
-	EventsChannel    chan kafka.Event
+	ProducedMessages []kafka.Message
 }
 
-func (m *MockProducer) Produce(topic *string, value []byte, headers []kafka.Header) error {
-	m.ProducedMessages = append(m.ProducedMessages, value)
-	// Simulate delivery report
-	if m.DeliveryReports != nil {
-		m.DeliveryReports <- &kafka.Message{TopicPartition: kafka.TopicPartition{Topic: topic}, Value: value}
-	}
+func (m *MockProducer) WriteMessages(ctx context.Context, msgs ...kafka.Message) error {
+	m.ProducedMessages = append(m.ProducedMessages, msgs...)
 	return nil
 }
-func (m *MockProducer) Events() chan kafka.Event { return m.EventsChannel }
-func (m *MockProducer) Flush(timeoutMs int) int  { return 0 }
-func (m *MockProducer) Close()                   {}
+func (m *MockProducer) Close() error { return nil } // Close method for kafka.Writer returns error
 
-// func KafkaStringPtr is a helper function in producerPkg, so it's not part of the producer interface
-// and thus not directly mockable here.
+

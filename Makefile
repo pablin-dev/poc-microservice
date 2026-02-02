@@ -25,8 +25,7 @@ test-race:
 	go test -race -v ./services/providers/kyc/...
 
 lint:
-	@echo "Running golangci-lint..."
-	GOFLAGS=-buildvcs=false $(GOPATH)/bin/golangci-lint run ./...
+	GOFLAGS=-buildvcs=false $(GOBIN)/golangci-lint run ./...
 
 fmt:
 	@echo "Formatting Go code..."
